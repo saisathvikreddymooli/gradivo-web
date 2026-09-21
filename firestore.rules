@@ -1,0 +1,182 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function authPhone() {
+      return signedIn() && 'phone_number' in request.auth.token
+        ? request.auth.token.phone_number
+        : "";
+    }
+
+    // The stored phone number must be empty or match the verified
+    // phone number on the Firebase Auth account. It can never be
+    // set to someone else's number.
+    function validProfilePhone() {
+      return !('phone' in request.resource.data)
+        || request.resource.data.phone == ""
+        || request.resource.data.phone == authPhone();
+    }
+
+    function conv() {
+      return get(/databases/$(database)/documents/conversations/$(conversationId)).data;
+    }
+
+    function isConvParticipant() {
+      return signedIn() && request.auth.uid in conv().participants;
+    }
+
+    function otherUid() {
+      return conv().participants[0] == request.auth.uid
+        ? conv().participants[1]
+        : conv().participants[0];
+    }
+
+    function pairBlocked() {
+      return exists(/databases/$(database)/documents/blocks/$(request.auth.uid + '_' + otherUid()))
+        || exists(/databases/$(database)/documents/blocks/$(otherUid() + '_' + request.auth.uid));
+    }
+
+    function isGroupMember(groupId) {
+      return signedIn() && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+    }
+
+    function groupData(groupId) {
+      return get(/databases/$(database)/documents/groups/$(groupId)).data;
+    }
+
+    function groupType(groupId) {
+      return groupData(groupId).get('type', 'public');
+    }
+
+    function isGroupArrayMember(groupId) {
+      return signedIn() && request.auth.uid in groupData(groupId).get('members', []);
+    }
+
+    function isGroupMemberAny(groupId) {
+      return isGroupMember(groupId) || isGroupArrayMember(groupId);
+    }
+
+    function isGroupAdmin(groupId) {
+      return signedIn()
+        && (request.auth.uid in groupData(groupId).get('admins', [])
+          || request.auth.uid == groupData(groupId).get('createdBy', ''));
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create: if isUser(userId)
+        && request.resource.data.keys().hasAll(['name', 'isVerifiedSenior'])
+        && request.resource.data.isVerifiedSenior == false
+        && validProfilePhone();
+      allow update: if isUser(userId)
+        && request.resource.data.isVerifiedSenior == resource.data.isVerifiedSenior
+        && validProfilePhone();
+      allow delete: if false;
+    }
+
+    match /conversations/{conversationId} {
+      allow read: if isConvParticipant();
+      allow create: if signedIn()
+        && request.auth.uid in request.resource.data.participants
+        && request.resource.data.participants.size() == 2;
+      allow update: if isConvParticipant();
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isConvParticipant();
+        allow create: if isConvParticipant()
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() < 4000
+          && !pairBlocked();
+        allow update: if isConvParticipant()
+          && request.resource.data.senderId == resource.data.senderId
+          && request.resource.data.text == resource.data.text;
+        allow delete: if false;
+      }
+    }
+
+    match /groups/{groupId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() < 120;
+      allow update: if signedIn();
+      allow delete: if false;
+
+      match /members/{userId} {
+        allow read: if signedIn();
+        allow create: if isUser(userId) || isGroupAdmin(groupId);
+        allow delete: if isUser(userId) || isGroupAdmin(groupId);
+        allow update: if isUser(userId) || isGroupAdmin(groupId);
+      }
+
+      match /messages/{messageId} {
+        allow read: if signedIn()
+          && (groupType(groupId) == 'public' || isGroupMemberAny(groupId));
+        allow create: if isGroupMemberAny(groupId)
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() < 4000;
+        allow update, delete: if false;
+      }
+    }
+
+    match /groupMembers/{memberId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && (request.resource.data.userId == request.auth.uid
+          || isGroupAdmin(request.resource.data.groupId));
+      allow delete: if signedIn()
+        && (resource.data.userId == request.auth.uid
+          || isGroupAdmin(resource.data.groupId));
+      allow update: if false;
+    }
+
+    match /projectRequests/{projectId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.creatorId == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.creatorId == request.auth.uid;
+    }
+
+    // Curated real-world opportunities (internships, hackathons).
+    // Public listings: anyone can read. Writes happen only through the
+    // Firebase console or Admin SDK — never from the app client.
+    match /opportunities/{opportunityId} {
+      allow read: if true;
+      allow create, update, delete: if false;
+    }
+
+    match /reports/{reportId} {
+      allow read: if signedIn() && resource.data.reportedBy == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.reportedBy == request.auth.uid
+        && request.resource.data.reportedUser is string
+        && request.resource.data.reason is string;
+      allow update, delete: if false;
+    }
+
+    match /blocks/{blockId} {
+      allow read: if signedIn()
+        && (resource.data.blockedBy == request.auth.uid
+          || resource.data.blockedUser == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.blockedBy == request.auth.uid
+        && request.resource.data.blockedUser is string
+        && request.resource.data.blockedUser != request.auth.uid
+        && blockId == request.auth.uid + '_' + request.resource.data.blockedUser;
+      allow delete: if signedIn() && resource.data.blockedBy == request.auth.uid;
+      allow update: if false;
+    }
+  }
+}
