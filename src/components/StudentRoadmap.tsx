@@ -13,7 +13,7 @@ import {
 import { CAREER_LABELS, CAREER_PLANS, SKILL_OPTIONS, SKILLS } from "../roadmap/catalog";
 import { generateRoadmap } from "../roadmap/generateRoadmap";
 import { askGradivoAI } from "../roadmap/mentor";
-import { loadIntake, loadProgress, saveIntake, setItemStatus } from "../roadmap/progress";
+import { loadIntake, saveIntake, setItemStatus } from "../roadmap/progress";
 import { loadKnowledgeSource } from "../roadmap/roadmapSource";
 import type {
   CareerGoal,
@@ -31,10 +31,16 @@ type Colors = {
   card: string;
   card2: string;
   border: string;
+  inputBorder: string;
   purple: string;
   purple2: string;
   text: string;
   muted: string;
+  labelText: string;
+  inputBg: string;
+  navBg: string;
+  panel: string;
+  glowCard: string;
 };
 
 type ProfileBits = {
@@ -93,19 +99,27 @@ export default function StudentRoadmap({
   onBack,
   onOpenProfile,
   classicSteps,
+  initialCareerGoal,
+  progress,
+  onProgressChange,
+  onLearnTopic,
 }: {
   profile: ProfileBits;
   colors: Colors;
   onBack: () => void;
   onOpenProfile: () => void;
   classicSteps: { title: string; time: string; items: string[]; icon: ReactNode }[];
+  initialCareerGoal: CareerGoal | null;
+  progress: ProgressMap;
+  onProgressChange: (progress: ProgressMap) => void;
+  onLearnTopic: (topicId: string, goal: CareerGoal) => void;
 }) {
   const inputStyle: CSSProperties = {
     width: "100%",
     padding: "12px 13px",
     borderRadius: 9,
-    border: `1px solid ${colors.border}`,
-    background: "#0b0b10",
+    border: `1px solid ${colors.inputBorder}`,
+    background: colors.inputBg,
     color: colors.text,
     outline: "none",
     fontSize: 14,
@@ -113,7 +127,7 @@ export default function StudentRoadmap({
   const fieldLabel: CSSProperties = {
     display: "grid",
     gap: 8,
-    color: "#d4d4d8",
+    color: colors.labelText,
     fontSize: 13,
     fontWeight: 650,
   };
@@ -134,7 +148,7 @@ export default function StudentRoadmap({
     display: "inline-flex",
     alignItems: "center",
     gap: 8,
-    boxShadow: "0 8px 30px rgba(139,92,246,.2)",
+    boxShadow: "0 8px 30px rgba(59,130,246,.2)",
   };
   const secondary: CSSProperties = {
     border: `1px solid ${colors.border}`,
@@ -152,8 +166,8 @@ export default function StudentRoadmap({
     gap: 7,
     padding: "7px 12px",
     borderRadius: 999,
-    border: "1px solid rgba(139,92,246,.35)",
-    background: "rgba(139,92,246,.1)",
+    border: "1px solid rgba(59,130,246,.35)",
+    background: "rgba(59,130,246,.1)",
     color: colors.purple2,
     fontSize: 13,
     fontWeight: 600,
@@ -171,7 +185,6 @@ export default function StudentRoadmap({
       careerGoal: guessCareer(profile.goal),
     };
   });
-  const [progress, setProgress] = useState<ProgressMap>(() => loadProgress());
   const [source, setSource] = useState<KnowledgeSource | null>(null);
   const [showForm, setShowForm] = useState(true);
   const [roadmap, setRoadmap] = useState<GeneratedRoadmap | null>(null);
@@ -186,6 +199,16 @@ export default function StudentRoadmap({
   useEffect(() => {
     loadKnowledgeSource().then((loaded) => setSource(loaded.source));
   }, []);
+
+  useEffect(() => {
+    if (!initialCareerGoal) return;
+    const nextIntake = {
+      ...intake,
+      careerGoal: initialCareerGoal,
+      targetRole: CAREER_LABELS[initialCareerGoal],
+    };
+    build(nextIntake);
+  }, [initialCareerGoal, source]);
 
   function build(nextIntake = intake, nextProgress = progress) {
     const plan = CAREER_PLANS[nextIntake.careerGoal];
@@ -206,7 +229,7 @@ export default function StudentRoadmap({
 
   function updateStatus(id: string, status: ItemStatus) {
     const next = setItemStatus(progress, id, status);
-    setProgress(next);
+    onProgressChange(next);
     if (!roadmap) return;
     const plan = CAREER_PLANS[intake.careerGoal];
     const knowledge = source ?? roadmap.source;
@@ -244,6 +267,7 @@ export default function StudentRoadmap({
     return (
       <div
         key={skillId}
+        className="roadmap-skill-card"
         style={{
           border: `1px solid ${colors.border}`,
           background: colors.card2,
@@ -262,6 +286,9 @@ export default function StudentRoadmap({
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" style={secondary} onClick={() => setWhySkill(skill.id)}>
             Why this?
+          </button>
+          <button type="button" style={{ ...secondary, borderColor: "rgba(59,130,246,.42)" }} onClick={() => onLearnTopic(skill.id, intake.careerGoal)}>
+            Learn this <ArrowRight size={14} />
           </button>
           {(["not_started", "learning", "completed"] as const).map((s) => (
             <button
@@ -437,7 +464,7 @@ export default function StudentRoadmap({
                       }
                       style={{
                         border: `1px solid ${active ? colors.purple : colors.border}`,
-                        background: active ? "rgba(139,92,246,.15)" : colors.card2,
+                        background: active ? "rgba(59,130,246,.15)" : colors.card2,
                         color: active ? colors.purple2 : colors.muted,
                         padding: "8px 11px",
                         borderRadius: 8,
@@ -471,7 +498,7 @@ export default function StudentRoadmap({
                         }
                         style={{
                           border: `1px solid ${active ? colors.purple : colors.border}`,
-                          background: active ? "rgba(139,92,246,.15)" : colors.card2,
+                          background: active ? "rgba(59,130,246,.15)" : colors.card2,
                           color: active ? colors.purple2 : colors.muted,
                           padding: "8px 11px",
                           borderRadius: 8,
@@ -501,8 +528,7 @@ export default function StudentRoadmap({
               style={{
                 ...card,
                 marginTop: 32,
-                background:
-                  "linear-gradient(135deg, rgba(139,92,246,.14), rgba(16,16,22,.9))",
+                background: colors.glowCard,
               }}
             >
               <div style={{ fontSize: 12, color: colors.purple2, fontWeight: 700 }}>
@@ -515,7 +541,7 @@ export default function StudentRoadmap({
                 style={{
                   height: 8,
                   borderRadius: 99,
-                  background: "#0b0b10",
+                  background: colors.card2,
                   marginTop: 16,
                   overflow: "hidden",
                 }}
@@ -669,7 +695,7 @@ export default function StudentRoadmap({
                       {open ? (
                         <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
                           {stage.skillIds.length
-                            ? stage.skillIds.slice(0, 5).map((id) => skillBtn(id))
+                            ? stage.skillIds.map((id) => skillBtn(id))
                             : null}
                           {stage.id === "projects"
                             ? roadmap.projects.map((p) => (
@@ -712,7 +738,7 @@ export default function StudentRoadmap({
                     style={{
                       padding: "8px 12px",
                       borderRadius: 8,
-                      background: "rgba(139,92,246,.1)",
+                      background: "rgba(59,130,246,.1)",
                       color: colors.purple2,
                       fontSize: 13,
                     }}
@@ -795,7 +821,7 @@ export default function StudentRoadmap({
                         borderRadius: 16,
                         display: "grid",
                         placeItems: "center",
-                        background: "rgba(139,92,246,.12)",
+                        background: "rgba(59,130,246,.12)",
                         color: colors.purple2,
                       }}
                     >

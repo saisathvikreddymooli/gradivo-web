@@ -1,37 +1,46 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { onAuthStateChanged, updateProfile } from "firebase/auth";
 import {
   ArrowRight,
   BookOpen,
   Briefcase,
-  CheckCircle2,
   ChevronRight,
   Code2,
   Compass,
-  Lightbulb,
   Menu,
-  Map,
+  Monitor,
+  Moon,
   Rocket,
   Search,
   Shield,
   Sparkles,
+  Sun,
   Target,
   User,
-  Users,
   X,
   Zap,
 } from "lucide-react";
-import gradivoLogo from "./assets/gradivoweb-logo.png";
 import ProfileAuth from "./components/ProfileAuth";
 import StudentRoadmap from "./components/StudentRoadmap";
 import ConnectPage from "./connect/ConnectPage";
 import NoticesPage from "./notices/NoticesPage";
-import OpportunityAlert from "./notices/OpportunityAlert";
+import CommunityPage from "./community/CommunityPage";
+import LiveBackground from "./components/LiveBackground";
+import IntroAnimation from "./components/IntroAnimation";
+import LearnDiscovery from "./components/LearnDiscovery";
+import HomeExperience from "./components/HomeExperience";
 import ConnectProfileFields from "./connect/ConnectProfileFields";
 import { DEFAULT_COUNTRY } from "./connect/constants";
 import { loadUser, profileFromUser, saveConnectProfile } from "./connect/api";
 import type { AppStudentProfile } from "./connect/types";
 import { auth } from "./firebase/config";
+import { useTheme, type ThemeMode } from "./theme";
+import { getSearchDestination } from "./search";
+import type { ConnectTab } from "./connect/types";
+import { CAREER_LABELS, SKILLS } from "./roadmap/catalog";
+import { CAREER_TOPIC_PATHS, LEARN_TRACKS, TOPIC_ROADMAPS } from "./roadmap/learnTopics";
+import { loadAccountProgress, loadIntake, loadProgress, setItemStatus } from "./roadmap/progress";
+import type { CareerGoal, ItemStatus, ProgressMap } from "./roadmap/types";
 
 
 type Page =
@@ -41,7 +50,25 @@ type Page =
   | "learn"
   | "careers"
   | "opportunities"
+  | "community"
   | "connect";
+
+const pagePaths: Record<Page, string> = {
+  home: "/",
+  profile: "/profile",
+  roadmap: "/roadmap",
+  learn: "/learn",
+  careers: "/careers",
+  opportunities: "/opportunities",
+  community: "/community",
+  connect: "/connect",
+};
+
+function pageFromPath(pathname: string): Page {
+  const normalizedPath = pathname.replace(/\/+$/, "").toLowerCase();
+  if (!normalizedPath || normalizedPath === "/index.html") return "home";
+  return Object.entries(pagePaths).find(([, path]) => path === normalizedPath)?.[0] as Page ?? "home";
+}
 
 const initialProfile: AppStudentProfile = {
   name: "",
@@ -58,6 +85,10 @@ const initialProfile: AppStudentProfile = {
   isSenior: false,
   helpAreas: [],
 };
+
+function isCompleteProfile(profile: Pick<AppStudentProfile, "name" | "college" | "state">): boolean {
+  return Boolean(profile.name.trim() && profile.college.trim() && profile.state.trim());
+}
 
 
 
@@ -158,55 +189,34 @@ const careers = [
   },
 ];
 
-const learningTracks = [
-  {
-    title: "Programming Basics",
-    icon: <Code2 size={24} />,
-    level: "Beginner",
-    topics: ["Variables", "Conditions", "Loops", "Functions", "Arrays"],
-  },
-  {
-    title: "Web Development",
-    icon: <Briefcase size={24} />,
-    level: "Beginner → Intermediate",
-    topics: ["HTML", "CSS", "JavaScript", "React", "APIs"],
-  },
-  {
-    title: "Cybersecurity Basics",
-    icon: <Shield size={24} />,
-    level: "Beginner",
-    topics: ["Linux", "Networking", "Web Security", "OWASP", "Security Tools"],
-  },
-  {
-    title: "AI & Python",
-    icon: <Sparkles size={24} />,
-    level: "Beginner → Intermediate",
-    topics: ["Python", "NumPy", "Pandas", "ML Basics", "AI Projects"],
-  },
-];
-
 function App() {
-  const [theme] = useState<"light" | "dark" | "system">("system");
-
-const isDark =
-  theme === "dark" ||
-  (theme === "system" &&
-    window.matchMedia("(prefers-color-scheme: dark)").matches);
-const colors = {
-  bg: isDark ? "#070706" : "#f8f7ff",
-  card: isDark ? "#101016" : "#ffffff",
-  card2: isDark ? "#15151d" : "#f1efff",
-  border: isDark ? "#272733" : "#ddd6fe",
-  purple: "#8b5cf6",
-  purple2: "#a78bfa",
-  text: isDark ? "#f5f3ff" : "#18181b",
-  muted: isDark ? "#a1a1aa" : "#71717a",
-};
+  const { theme, setTheme, isDark, colors } = useTheme();
 
 
-  const [page, setPage] = useState<Page>("home");
-  
+  const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname));
+  const [selectedLearnTopic, setSelectedLearnTopic] = useState<string | null>(null);
+  const [learnPathGoal, setLearnPathGoal] = useState<CareerGoal | null>(null);
+  const [roadmapGoal, setRoadmapGoal] = useState<CareerGoal | null>(null);
+  const [learningProgress, setLearningProgress] = useState<ProgressMap>(() => loadProgress());
+  const [heroQuery, setHeroQuery] = useState("");
+  const [heroNotice, setHeroNotice] = useState("");
+  const [oppSearch, setOppSearch] = useState("");
+  const [connectTab, setConnectTab] = useState<ConnectTab>("discover");
+  const heroSearchPending = useRef(false);
+  const connectSearchPending = useRef(false);
+  const consumeHeroSearch = () => {
+    const pending = heroSearchPending.current;
+    heroSearchPending.current = false;
+    return pending;
+  };
+  const consumeConnectSearch = () => {
+    const pending = connectSearchPending.current;
+    connectSearchPending.current = false;
+    return pending;
+  };
+
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [themeMenu, setThemeMenu] = useState(false);
   const [hoveredMenu, setHoveredMenu] = useState<string | null>(null);
   const [profile, setProfile] = useState<AppStudentProfile>(initialProfile);
   const [verifiedSenior, setVerifiedSenior] = useState(false);
@@ -216,28 +226,72 @@ const colors = {
   const [profileReady, setProfileReady] = useState(false);
   /** True when users/{uid} exists with a saved name. */
   const [hasSavedProfile, setHasSavedProfile] = useState(false);
+  const [profileLoadError, setProfileLoadError] = useState("");
   /** Modal mode: edit the form, or view saved info. */
   const [editing, setEditing] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
-  /** Opening intro: shown only on initial website load, never on page changes. */
   const [introVisible, setIntroVisible] = useState(true);
-  const [introFading, setIntroFading] = useState(false);
+  const handleIntroComplete = useCallback(() => setIntroVisible(false), []);
 
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const fadeTimer = window.setTimeout(() => setIntroFading(true), 1700);
-    const hideTimer = window.setTimeout(() => {
-      setIntroVisible(false);
-      document.body.style.overflow = previousOverflow;
-    }, 2100);
-    return () => {
-      window.clearTimeout(fadeTimer);
-      window.clearTimeout(hideTimer);
-      document.body.style.overflow = previousOverflow;
+    const main = document.querySelector(".gradivo-main");
+    if (!main) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const targets = new Set<Element>();
+    const collect = (node: ParentNode, target: Set<Element>) => {
+      if (node instanceof Element && node.matches("section, article, [data-scroll-reveal]")) target.add(node);
+      node.querySelectorAll("section, article, [data-scroll-reveal]").forEach((item) => target.add(item));
     };
+    collect(main, targets);
+    if (reduceMotion || !("IntersectionObserver" in window)) {
+      targets.forEach((item) => item.classList.add("scroll-revealed"));
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add("scroll-revealed");
+        observer.unobserve(entry.target);
+      });
+    }, { threshold: 0.08, rootMargin: "0px 0px -36px 0px" });
+    targets.forEach((item) => {
+      item.classList.add("scroll-reveal");
+      observer.observe(item);
+    });
+    const mutations = new MutationObserver((records) => {
+      records.forEach((record) => record.addedNodes.forEach((node) => {
+        if (!(node instanceof Element)) return;
+        const added = new Set<Element>();
+        collect(node, added);
+        added.forEach((item) => {
+          if (targets.has(item)) return;
+          targets.add(item);
+          item.classList.add("scroll-reveal");
+          observer.observe(item);
+        });
+      }));
+    });
+    mutations.observe(main, { childList: true, subtree: true });
+    return () => {
+      mutations.disconnect();
+      observer.disconnect();
+    };
+  }, [page]);
+
+  useEffect(() => {
+    const syncPageFromUrl = () => {
+      const nextPage = pageFromPath(window.location.pathname);
+      setPage(nextPage);
+      setMobileMenu(false);
+      setThemeMenu(false);
+      if (nextPage !== "roadmap") setRoadmapGoal(null);
+      if (nextPage === "opportunities") setOppSearch("");
+      if (nextPage === "connect") setConnectTab("discover");
+    };
+    window.addEventListener("popstate", syncPageFromUrl);
+    return () => window.removeEventListener("popstate", syncPageFromUrl);
   }, []);
 
   const openProfile = () => {
@@ -249,13 +303,47 @@ const colors = {
   };
 
   const navigate = (newPage: Page) => {
+    const nextPath = pagePaths[newPage];
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({ page: newPage }, "", nextPath);
+    }
+    if (newPage !== "roadmap") setRoadmapGoal(null);
     setPage(newPage);
     setMobileMenu(false);
+    setThemeMenu(false);
+    if (newPage === "opportunities" && !consumeHeroSearch()) {
+      setOppSearch("");
+    }
+    if (newPage === "connect" && !consumeConnectSearch()) {
+      setConnectTab("discover");
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const openLearnTopic = (topicId: string, goal?: CareerGoal) => {
+    setSelectedLearnTopic(topicId);
+    setLearnPathGoal(goal ?? null);
+    navigate("learn");
+  };
+
+  const openCareerRoadmap = (goal: CareerGoal) => {
+    setRoadmapGoal(goal);
+    navigate("roadmap");
+  };
+
+  const themeOptions: { value: ThemeMode; label: string; icon: React.ReactNode }[] = [
+    { value: "light", label: "Light", icon: <Sun size={15} /> },
+    { value: "dark", label: "Dark", icon: <Moon size={15} /> },
+    { value: "system", label: "System", icon: <Monitor size={15} /> },
+  ];
+
+  const ThemeIcon = theme === "light" ? Sun : theme === "dark" ? Moon : Monitor;
+
   useEffect(() => {
-    return onAuthStateChanged(auth, async (user) => {
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setProfileReady(false);
+      setProfileLoadError("");
       if (!user) {
         // Logged out: clear any previous user's profile so the next login
         // starts clean and always loads from Firestore.
@@ -263,15 +351,21 @@ const colors = {
         setVerifiedSenior(false);
         setHasSavedProfile(false);
         setProfileReady(true);
+        setLearningProgress(loadProgress());
         return;
       }
-      setProfileReady(false);
+      void loadAccountProgress(user.uid).then((progress) => {
+        if (active && auth.currentUser?.uid === user.uid) setLearningProgress(progress);
+      });
+      setProfile(initialProfile);
       let remote = null;
       try {
         remote = await loadUser(user.uid);
       } catch (err) {
         console.error("Could not load profile:", err);
+        if (active) setProfileLoadError("Could not load your saved profile. Check your connection and refresh to try again.");
       }
+      if (!active || auth.currentUser?.uid !== user.uid) return;
       if (!remote) {
         setHasSavedProfile(false);
         setProfile((current) => ({
@@ -283,7 +377,7 @@ const colors = {
         return;
       }
       setVerifiedSenior(remote.isVerifiedSenior);
-      setHasSavedProfile(Boolean(remote.name));
+      setHasSavedProfile(isCompleteProfile(remote));
       const next = profileFromUser(remote, "");
       setProfile({
         ...next,
@@ -291,13 +385,18 @@ const colors = {
       });
       setProfileReady(true);
     });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
-  const persistProfile = async (): Promise<boolean> => {
+  const persistProfile = async (): Promise<void> => {
+    const currentUser = auth.currentUser;
+    if (!currentUser?.uid) {
+      throw new Error("Please log in first (Google or phone), then save your profile.");
+    }
     try {
-      await saveProfileNameToAccount();
-      const currentUser = auth.currentUser;
-      if (!currentUser) return false;
       await saveConnectProfile(
         currentUser.uid,
         profile,
@@ -305,40 +404,65 @@ const colors = {
         currentUser.email || "",
         currentUser.phoneNumber || "",
       );
-      setHasSavedProfile(Boolean(profile.name.trim()));
-      return true;
-    } catch (err) {
-      console.error("Could not save profile:", err);
-      return false;
+    } catch (error) {
+      const firebaseError = error as { code?: unknown; message?: unknown };
+      console.error("[Profile] Save failed", {
+        operation: "save profile to Firestore",
+        code: typeof firebaseError?.code === "string" ? firebaseError.code : "unknown",
+        message: typeof firebaseError?.message === "string" ? firebaseError.message : String(error),
+        uid: currentUser.uid,
+        documentPath: `users/${currentUser.uid}`,
+        error,
+      });
+      throw error;
+    }
+    setHasSavedProfile(isCompleteProfile(profile));
+    try {
+      await saveProfileNameToAccount();
+    } catch (error) {
+      // Firestore is the source of truth; an Auth display-name update must
+      // not turn a successful profile save into a reported failure.
+      console.warn("[Firebase] Profile saved, but Auth displayName update failed", error);
     }
   };
 
   const validateProfile = (): string => {
     if (!profile.name.trim()) return "Please enter your name.";
+    if (!profile.college.trim()) return "Please enter your college to complete your profile.";
+    if (!profile.state.trim()) return "Please select your state to complete your profile.";
     return "";
   };
 
-  const handleSaveProfile = async () => {
+  const handleSaveProfile = async (): Promise<boolean> => {
     const validationError = validateProfile();
     if (validationError) {
       setSaveError(validationError);
       setSaveSuccess(false);
-      return;
+      return false;
     }
     if (!auth.currentUser) {
       setSaveError("Please log in first (Google or phone), then save your profile.");
       setSaveSuccess(false);
-      return;
+      return false;
     }
     setSaving(true);
     setSaveError("");
     setSaveSuccess(false);
-    const ok = await persistProfile();
-    setSaving(false);
-    if (ok) {
+    try {
+      await persistProfile();
       setSaveSuccess(true);
-    } else {
-      setSaveError("Could not save your profile. Check your connection and try again.");
+      return true;
+    } catch (error) {
+      const firebaseError = error as { code?: unknown; message?: unknown };
+      const code = typeof firebaseError?.code === "string" ? ` (${firebaseError.code})` : "";
+      const message = typeof firebaseError?.message === "string"
+        ? firebaseError.message
+        : "An unexpected Firebase error occurred.";
+      setSaveError(`Could not save your profile${code}: ${message}`);
+      setSaveSuccess(false);
+      return false;
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -355,6 +479,25 @@ const colors = {
     }
   };
 
+  const fieldLabel: React.CSSProperties = {
+    display: "grid",
+    gap: 8,
+    color: colors.labelText,
+    fontSize: 13,
+    fontWeight: 650,
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "12px 13px",
+    borderRadius: 9,
+    border: `1px solid ${colors.inputBorder}`,
+    background: colors.inputBg,
+    color: colors.text,
+    outline: "none",
+    fontSize: 14,
+  };
+
   const pageTitle = {
     home: "Your path starts here.",
     profile: "Your Student Profile",
@@ -362,6 +505,7 @@ const colors = {
     learn: "What should you learn?",
     careers: "Explore Career Paths",
     opportunities: "Opportunities",
+    community: "Student Community",
     connect: "Connect. Ask. Learn. Grow.",
   }[page];
 
@@ -379,16 +523,16 @@ const colors = {
       position: "sticky",
       top: 0,
       zIndex: 50,
-      background: "rgba(7,7,11,0.88)",
+      background: colors.navBg,
       backdropFilter: "blur(18px)",
       borderBottom: `1px solid ${colors.border}`,
     } as React.CSSProperties,
 
     navInner: {
       width: "100%",
-      maxWidth: "none",
-      margin: 0,
-      padding: "18px clamp(20px, 4vw, 60px)",
+      maxWidth: 1180,
+      margin: "0 auto",
+      padding: "14px 20px",
       boxSizing: "border-box",
       display: "flex",
       alignItems: "center",
@@ -409,10 +553,10 @@ const colors = {
       width: 34,
       height: 34,
       borderRadius: 10,
-      background: `linear-gradient(135deg, ${colors.purple}, #5b21b6)`,
+      background: `linear-gradient(135deg, ${colors.purple}, #1E40AF)`,
       display: "grid",
       placeItems: "center",
-      boxShadow: "0 0 25px rgba(139,92,246,.3)",
+      boxShadow: "0 0 25px rgba(59,130,246,.3)",
     } as React.CSSProperties,
 
     navLinks: {
@@ -442,7 +586,7 @@ const colors = {
       display: "inline-flex",
       alignItems: "center",
       gap: 8,
-      boxShadow: "0 8px 30px rgba(139,92,246,.2)",
+      boxShadow: "0 8px 30px rgba(59,130,246,.2)",
     } as React.CSSProperties,
 
     container: {
@@ -474,8 +618,8 @@ const colors = {
       gap: 7,
       padding: "7px 12px",
       borderRadius: 999,
-      border: "1px solid rgba(139,92,246,.35)",
-      background: "rgba(139,92,246,.1)",
+      border: "1px solid rgba(59,130,246,.35)",
+      background: "rgba(59,130,246,.1)",
       color: colors.purple2,
       fontSize: 13,
       fontWeight: 600,
@@ -483,12 +627,12 @@ const colors = {
   };
 
   const renderNavbar = () => (
-    <nav style={styles.nav}>
-      <div style={styles.navInner}>
+    <nav className="gradivo-nav" style={styles.nav}>
+      <div className="gradivo-nav-inner" style={styles.navInner}>
         <div style={styles.logo} onClick={() => navigate("home")}>
          <div style={styles.logoMark}>
   <img
-    src={gradivoLogo}
+    src="/gradivo-logo.png"
     alt="Gradivo"
     style={{ width: "100%", height: "100%", objectFit: "contain" }}
   />
@@ -501,21 +645,23 @@ const colors = {
             {(
               [
                 ["Home", "home"],
-                ["Connect", "connect"],
                 ["Roadmap", "roadmap"],
                 ["Learn", "learn"],
                 ["Careers", "careers"],
                 ["Opportunities", "opportunities"],
+                ["Connect", "connect"],
+                ["Community", "community"],
               ] as const
             ).map(([label, value]) => (
               <button
                 key={value}
-                className="menu-item"
+                className={`menu-item${page === value ? " is-active" : ""}`}
+                aria-current={page === value ? "page" : undefined}
                 onClick={() => navigate(value)}
                 style={{
                   ...styles.navButton,
-                  color: page === value ? "white" : colors.muted,
-                  background: page === value ? "rgba(139,92,246,.18)" : "transparent",
+                color: page === value ? (isDark ? "white" : colors.purple2) : colors.muted,
+                  background: page === value ? "rgba(59,130,246,.18)" : "transparent",
                 }}
               >
                 {label}
@@ -534,12 +680,93 @@ const colors = {
             Profile
           </button>
 
+          <div style={{ position: "relative" }}>
+            <button
+              aria-label="Change theme"
+              title={`Theme: ${theme}`}
+              onClick={() => setThemeMenu(!themeMenu)}
+              style={{
+                border: `1px solid ${colors.border}`,
+                background: colors.card,
+                color: colors.text,
+                padding: 10,
+                borderRadius: 9,
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+              }}
+            >
+              <ThemeIcon size={19} />
+            </button>
+
+            {themeMenu && (
+              <div
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: 48,
+                  width: 190,
+                  background: colors.card,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 14,
+                  padding: 6,
+                  zIndex: 60,
+                  boxShadow: "0 12px 40px rgba(0,0,0,.35)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: colors.muted,
+                    padding: "8px 10px 4px",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  THEME
+                </div>
+                {themeOptions.map((option) => {
+                  const selected = theme === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      onClick={() => {
+                        setTheme(option.value);
+                        setThemeMenu(false);
+                      }}
+                      style={{
+                        border: "none",
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        background: selected ? "rgba(59,130,246,.15)" : "transparent",
+                        color: selected ? colors.purple2 : colors.muted,
+                        padding: "10px",
+                        borderRadius: 9,
+                        cursor: "pointer",
+                        fontSize: 14,
+                        fontWeight: selected ? 700 : 500,
+                      }}
+                    >
+                      {option.icon}
+                      {option.label}
+                      <span style={{ marginLeft: "auto", fontSize: 13 }}>
+                        {selected ? "●" : "○"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <button
             className="mobile-menu-button"
             style={{
               border: `1px solid ${colors.border}`,
               background: colors.card,
-              color: "white",
+              color: colors.text,
               padding: 10,
               borderRadius: 9,
               cursor: "pointer",
@@ -562,14 +789,16 @@ const colors = {
         >
           {[
             ["Home", "home"],
-            ["Connect", "connect"],
             ["Roadmap", "roadmap"],
             ["Learn", "learn"],
             ["Careers", "careers"],
             ["Opportunities", "opportunities"],
+            ["Connect", "connect"],
+            ["Community", "community"],
           ].map(([label, value]) => (
             <button
-  className="menu-item"
+  className={`menu-item${page === value ? " is-active" : ""}`}
+  aria-current={page === value ? "page" : undefined}
   key={value}
   onClick={() => navigate(value as Page)}
   onMouseEnter={() => setHoveredMenu(value)}
@@ -578,12 +807,12 @@ const colors = {
     ...styles.navButton,
     textAlign: "left",
     background:
-      hoveredMenu === value ? "#8b5cf6" : colors.card,
+      hoveredMenu === value ? "#2563EB" : colors.card,
     color:
       hoveredMenu === value ? "white" : colors.muted,
     boxShadow:
       hoveredMenu === value
-        ? "0 0 18px rgba(139, 92, 246, 0.7)"
+        ? "0 0 18px rgba(59, 130, 246, 0.7)"
         : "none",
     transform:
       hoveredMenu === value ? "translateX(4px)" : "translateX(0)",
@@ -593,332 +822,87 @@ const colors = {
   {label}
 </button>
           ))}
+
+          <div
+            style={{
+              borderTop: `1px solid ${colors.border}`,
+              marginTop: 6,
+              paddingTop: 12,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: colors.muted,
+                padding: "0 13px 6px",
+                letterSpacing: "0.5px",
+              }}
+            >
+              THEME
+            </div>
+            {themeOptions.map((option) => {
+              const selected = theme === option.value;
+              return (
+                <button
+                  className="menu-item"
+                  key={option.value}
+                  onClick={() => setTheme(option.value)}
+                  style={{
+                    ...styles.navButton,
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    textAlign: "left",
+                    background: selected ? "rgba(59,130,246,.15)" : "transparent",
+                    color: selected ? colors.purple2 : colors.muted,
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  {option.icon}
+                  {option.label}
+                  <span style={{ marginLeft: "auto", fontSize: 13 }}>
+                    {selected ? "●" : "○"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </nav>
   );
 
   const renderHome = () => (
-    <>
-    
-      <section
-        style={{
-          minHeight: "calc(100vh - 75px)",
-          display: "flex",
-          alignItems: "center",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            position: "absolute",
-            width: 500,
-            height: 500,
-            background: "rgba(124,58,237,.16)",
-            filter: "blur(120px)",
-            borderRadius: "50%",
-            top: -180,
-            right: -120,
-          }}
-        />
-
-        <div
-          style={{
-            position: "absolute",
-            width: 400,
-            height: 400,
-            background: "rgba(139,92,246,.08)",
-            filter: "blur(100px)",
-            borderRadius: "50%",
-            bottom: -200,
-            left: -150,
-          }}
-        />
-
-        <div
-          style={{
-            ...styles.container,
-            width: "100%",
-            display: "flex",
-            gap: 28,
-            flexWrap: "wrap",
-            alignItems: "flex-start",
-          }}
-        >
-          <div style={{ flex: "1 1 560px", minWidth: 0, maxWidth: 850 }}>
-            <div style={styles.badge}>
-              <Sparkles size={15} />
-              Student Guidance Platform
-            </div>
-
-            <h1
-              style={{
-                fontSize: "clamp(48px, 8vw, 88px)",
-                lineHeight: 0.98,
-                letterSpacing: "-4px",
-                margin: "24px 0",
-                fontWeight: 850,
-              }}
-            >
-              Stop wondering.
-              <br />
-              <span
-                style={{
-                  background: `linear-gradient(90deg, ${colors.purple2}, #c4b5fd)`,
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                }}
-              >
-                Start building.
-              </span>
-            </h1>
-
-            <p
-              style={{
-                fontSize: 20,
-                lineHeight: 1.7,
-                color: colors.muted,
-                maxWidth: "100%",
-              }}
-            >
-              Gradivo helps students understand what to learn, which career
-              paths exist, what skills they need, and what they can do next.
-            </p>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                marginTop: 32,
-                flexWrap: "wrap",
-              }}
-            >
-              <button style={styles.primary} onClick={() => navigate("roadmap")}>
-                Build My Roadmap
-                <ArrowRight size={18} />
-              </button>
-
-              <button
-                style={{
-                  ...styles.navButton,
-                  border: `1px solid ${colors.border}`,
-                  background: colors.card,
-                  color: "white",
-                  padding: "12px 18px",
-                }}
-                onClick={() => navigate("careers")}
-              >
-                Explore Careers
-              </button>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 30,
-                marginTop: 55,
-                flexWrap: "wrap",
-              }}
-            >
-              {[
-                ["01", "Know yourself"],
-                ["02", "Choose a direction"],
-                ["03", "Build skills"],
-                ["04", "Find opportunities"],
-              ].map(([num, text]) => (
-                <div key={num}>
-                  <div
-                    style={{
-                      color: colors.purple2,
-                      fontWeight: 800,
-                      fontSize: 13,
-                    }}
-                  >
-                    {num}
-                  </div>
-                  <div style={{ marginTop: 5, fontSize: 14 }}>{text}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <OpportunityAlert
-            colors={colors}
-            city={profile.city}
-            state={profile.state}
-            onView={() => navigate("opportunities")}
-          />
-        </div>
-      </section>
-
-      <section style={styles.section}>
-        <div style={styles.container}>
-          <div style={{ textAlign: "center", maxWidth: "100%", margin: "0 auto 55px" }}>
-            <div style={styles.badge}>Everything in one place</div>
-            <h2
-              style={{
-                fontSize: "clamp(32px,5vw,54px)",
-                margin: "18px 0 12px",
-                letterSpacing: "-2px",
-              }}
-            >
-              What do you need help with?
-            </h2>
-            <p style={{ ...styles.muted, lineHeight: 1.7 }}>
-              Choose where you are stuck and Gradivo gives you a clear next
-              step.
-            </p>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))",
-              gap: 16,
-            }}
-          >
-            {[
-              {
-                title: "Connect",
-                text: "Meet students and seniors across India.",
-                icon: <Users />,
-                page: "connect" as Page,
-              },
-              {
-                title: "What to Learn",
-                text: "Discover skills and learning tracks.",
-                icon: <Lightbulb />,
-                page: "learn" as Page,
-              },
-              {
-                title: "Career Paths",
-                text: "Explore technology career directions.",
-                icon: <Compass />,
-                page: "careers" as Page,
-              },
-              {
-                title: "My Roadmap",
-                text: "Turn your goals into steps.",
-                icon: <Map />,
-                page: "roadmap" as Page,
-              },
-              {
-                title: "Opportunities",
-                text: "Find real internships and hackathons relevant to you.",
-                icon: <Rocket />,
-                page: "opportunities" as Page,
-              },
-            ].map((item) => (
-              <button
-                key={item.title}
-                onClick={() => navigate(item.page)}
-                style={{
-                  ...styles.card,
-                  cursor: "pointer",
-                  textAlign: "left",
-                  color: "white",
-                  transition: "transform .2s,border .2s",
-                  minHeight: 190,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = "translateY(-5px)";
-                  e.currentTarget.style.borderColor = colors.purple;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.borderColor = colors.border;
-                }}
-              >
-                <div
-                  style={{
-                    width: 52,
-                    height: 52,
-                    display: "grid",
-                    placeItems: "center",
-                    borderRadius: 15,
-                    background: "rgba(139,92,246,.12)",
-                    color: colors.purple2,
-                    marginBottom: 28,
-                  }}
-                >
-                  {item.icon}
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 18,
-                    fontWeight: 750,
-                    marginBottom: 8,
-                  }}
-                >
-                  {item.title}
-                </div>
-
-                <div style={{ color: colors.muted, fontSize: 14, lineHeight: 1.6 }}>
-                  {item.text}
-                </div>
-
-                <div
-                  style={{
-                    marginTop: 20,
-                    color: colors.purple2,
-                    fontSize: 13,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 5,
-                  }}
-                >
-                  Explore <ChevronRight size={15} />
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section style={styles.section}>
-        <div style={styles.container}>
-          <div
-            style={{
-              ...styles.card,
-              padding: "45px 35px",
-              background:
-                "linear-gradient(135deg, rgba(139,92,246,.14), rgba(16,16,22,.9))",
-            }}
-          >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(0,1fr) auto",
-                gap: 30,
-                alignItems: "center",
-              }}
-            >
-              <div>
-                <div style={styles.badge}>Personalized journey</div>
-                <h2 style={{ fontSize: 36, margin: "18px 0 10px" }}>
-                  Not sure where to start?
-                </h2>
-                <p style={{ ...styles.muted, lineHeight: 1.7 }}>
-                  Create your student profile and use it to understand your
-                  current level, interests, goals and next steps.
-                </p>
-              </div>
-
-              <button
-                style={styles.primary}
-                onClick={openProfile}
-              >
-                Create Profile
-                <ArrowRight size={18} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-      
-    </>
+    <HomeExperience
+      colors={colors}
+      primaryStyle={styles.primary}
+      query={heroQuery}
+      setQuery={setHeroQuery}
+      notice={heroNotice}
+      onFindPath={openProfile}
+      onNavigate={(destination) => navigate(destination)}
+      onExplore={() => document.getElementById("home-explore")?.scrollIntoView({ behavior: "smooth" })}
+      onStartExplore={() => navigate("learn")}
+      onSearch={(e) => {
+        e.preventDefault();
+        const dest = getSearchDestination(heroQuery);
+        if (!dest) {
+          setHeroNotice("No matching result found.");
+          return;
+        }
+        setHeroNotice("");
+        if (dest.page === "opportunities") {
+          heroSearchPending.current = true;
+          setOppSearch(heroQuery.trim());
+        } else if (dest.page === "connect") {
+          connectSearchPending.current = true;
+          setConnectTab(dest.tab ?? "discover");
+        }
+        navigate(dest.page);
+      }}
+    />
   );
 
   const renderRoadmap = () => (
@@ -927,101 +911,103 @@ const colors = {
       colors={colors}
       onBack={() => navigate("home")}
       onOpenProfile={openProfile}
+      initialCareerGoal={roadmapGoal}
+      progress={learningProgress}
+      onProgressChange={setLearningProgress}
+      onLearnTopic={(topicId, goal) => {
+        const next = setItemStatus(learningProgress, topicId, "learning");
+        setLearningProgress(next);
+        openLearnTopic(topicId, goal);
+      }}
       classicSteps={roadmapSteps}
     />
   );
 
-  const renderLearn = () => (
+  const renderLearn = () => {
+    if (!selectedLearnTopic || !SKILLS[selectedLearnTopic]) {
+      return <LearnDiscovery onOpenTopic={(id) => openLearnTopic(id)} onOpenRoadmap={openCareerRoadmap} />;
+    }
+    return (
     <section style={styles.section}>
       <div style={styles.container}>
         <div style={styles.badge}>
           <BookOpen size={15} />
-          Learning Tracks
+          {selectedLearnTopic ? "Learn this topic" : "Explore learning topics"}
         </div>
 
-        <h1 style={{ fontSize: 52, letterSpacing: "-2px", margin: "18px 0 12px" }}>
-          What should you learn?
-        </h1>
-
-        <p style={{ ...styles.muted, fontSize: 18, maxWidth: 700, lineHeight: 1.7 }}>
-          Start with fundamentals, then choose skills based on the direction
-          you want to explore.
-        </p>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))",
-            gap: 18,
-            marginTop: 45,
-          }}
-        >
-          {learningTracks.map((track) => (
-            <div key={track.title} style={styles.card}>
-              <div style={{ color: colors.purple2 }}>{track.icon}</div>
-
-              <h3 style={{ fontSize: 20, margin: "20px 0 8px" }}>
-                {track.title}
-              </h3>
-
-              <div
-                style={{
-                  color: colors.purple2,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  marginBottom: 20,
-                }}
-              >
-                {track.level}
-              </div>
-
-              <div style={{ display: "grid", gap: 11 }}>
-                {track.topics.map((topic) => (
-                  <div
-                    key={topic}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 9,
-                      color: colors.muted,
-                      fontSize: 14,
-                    }}
-                  >
-                    <CheckCircle2 size={15} color={colors.purple2} />
-                    {topic}
-                  </div>
-                ))}
-              </div>
+        {selectedLearnTopic && SKILLS[selectedLearnTopic] ? (() => {
+          const skill = SKILLS[selectedLearnTopic];
+          const status = learningProgress[selectedLearnTopic] ?? "not_started";
+          const candidateGoals = TOPIC_ROADMAPS[skill.id] ?? [];
+          const goal = learnPathGoal && candidateGoals.includes(learnPathGoal)
+            ? learnPathGoal
+            : candidateGoals[0];
+          const path = goal ? CAREER_TOPIC_PATHS[goal] ?? [] : [];
+          const pathIndex = path.indexOf(skill.id);
+          const previous = pathIndex > 0 ? SKILLS[path[pathIndex - 1]] : undefined;
+          const nextId = pathIndex >= 0 ? path[pathIndex + 1] : undefined;
+          const next = nextId ? SKILLS[nextId] : undefined;
+          const setStatus = (nextStatus: ItemStatus) =>
+            setLearningProgress((current) => setItemStatus(current, skill.id, nextStatus));
+          return (
+            <div style={{ marginTop: 30, display: "grid", gap: 20 }}>
+              <button type="button" onClick={() => setSelectedLearnTopic(null)} style={{ ...styles.navButton, paddingLeft: 0, width: "fit-content" }}>
+                <ArrowRight size={15} style={{ transform: "rotate(180deg)" }} /> All topics
+              </button>
+              {learningProgress[skill.id] === "learning" && (
+                <div style={{ ...styles.card, background: colors.glowCard, padding: 20 }}>
+                  <div style={{ color: colors.purple2, fontSize: 12, fontWeight: 800, letterSpacing: ".1em" }}>CONTINUE YOUR PATH</div>
+                  <strong style={{ display: "block", marginTop: 8 }}>{goal ? CAREER_LABELS[goal] : "Your learning path"}</strong>
+                  <p style={{ ...styles.muted, margin: "5px 0 14px" }}>Current step: {skill.name}</p>
+                  <button type="button" style={styles.primary} onClick={() => document.getElementById("learn-topic-detail")?.scrollIntoView({ behavior: "smooth" })}>Continue learning <ArrowRight size={16} /></button>
+                </div>
+              )}
+              <article id="learn-topic-detail" style={{ ...styles.card, padding: "clamp(22px,4vw,38px)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+                  <h1 style={{ fontSize: "clamp(32px,5vw,48px)", margin: 0, letterSpacing: "-1.5px" }}>{skill.name}</h1>
+                  <span style={styles.badge}>{status === "completed" ? "✓ Completed" : status === "learning" ? "● Current" : "Ready to explore"}</span>
+                </div>
+                <div style={{ display: "grid", gap: 22, marginTop: 28 }}>
+                  <div><h2 style={{ fontSize: 17 }}>Why this matters</h2><p style={styles.muted}>{skill.why}</p></div>
+                  <div><h2 style={{ fontSize: 17 }}>What you’ll learn</h2><p style={styles.muted}>{skill.whatToLearn}</p></div>
+                  <div><h2 style={{ fontSize: 17 }}>Learning resources</h2><ul style={{ color: colors.muted, paddingLeft: 20 }}>{skill.resources.map((resource) => <li key={resource.title}><strong style={{ color: colors.text }}>{resource.title}</strong> — {resource.note}</li>)}</ul></div>
+                  <div><h2 style={{ fontSize: 17 }}>Practice</h2><p style={styles.muted}>{skill.beginner}</p></div>
+                  <div><h2 style={{ fontSize: 17 }}>Mini project</h2><p style={styles.muted}>{skill.project}</p></div>
+                  <div><h2 style={{ fontSize: 17 }}>Where this fits</h2><p style={styles.muted}>{goal ? CAREER_LABELS[goal] : "Choose a roadmap to see this topic in a structured path."}</p><p style={{ color: colors.purple2, fontWeight: 650 }}>{previous?.name ? `${previous.name}  →  ` : ""}{skill.name} ← YOU ARE HERE{next ? `  →  ${next.name}` : ""}</p>{goal && <button type="button" style={styles.navButton} onClick={() => openCareerRoadmap(goal)}>View full roadmap <ArrowRight size={16} /></button>}</div>
+                  {next && <div><h2 style={{ fontSize: 17 }}>Next step</h2><p style={styles.muted}>{next.name}</p><button type="button" style={styles.navButton} onClick={() => openLearnTopic(next.id, goal)}>Learn next <ArrowRight size={16} /></button></div>}
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 28 }}>
+                  <button type="button" style={styles.primary} onClick={() => setStatus(status === "completed" ? "not_started" : "completed")}>{status === "completed" ? "Completed ✓" : "Mark topic complete"}</button>
+                  {next && <button type="button" style={styles.navButton} onClick={() => openLearnTopic(next.id, goal)}>Learn next <ArrowRight size={16} /></button>}
+                </div>
+                {status === "completed" && <div style={{ marginTop: 22, ...styles.badge }}>✓ Topic completed — {next ? `Next: ${next.name}` : "You reached the end of this path."}</div>}
+              </article>
+              <div style={{ ...styles.card, padding: 24 }}><h2 style={{ marginTop: 0 }}>Where can this take you?</h2><div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>{candidateGoals.map((roadmapId) => <button type="button" key={roadmapId} style={styles.navButton} onClick={() => openCareerRoadmap(roadmapId)}>{CAREER_LABELS[roadmapId]} <ArrowRight size={14} /></button>)}</div></div>
+              <div style={{ ...styles.card, padding: 24, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}><div><strong>Interested in going deeper?</strong><p style={{ ...styles.muted, margin: "6px 0 0" }}>Explore without choosing a career, or open a related structured path.</p></div><button type="button" style={styles.primary} onClick={() => goal ? openCareerRoadmap(goal) : setSelectedLearnTopic(null)}>Find a roadmap <ArrowRight size={16} /></button></div>
             </div>
-          ))}
-        </div>
-
-        <div
-          style={{
-            ...styles.card,
-            marginTop: 25,
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 20,
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <h3 style={{ margin: "0 0 7px" }}>Don't learn randomly.</h3>
-            <p style={{ margin: 0, ...styles.muted }}>
-              Connect what you learn to a project and a career direction.
-            </p>
-          </div>
-
-          <button style={styles.primary} onClick={() => navigate("careers")}>
-            Explore Careers <ArrowRight size={17} />
-          </button>
-        </div>
+          );
+        })() : (
+          <>
+            <h1 style={{ fontSize: 52, letterSpacing: "-2px", margin: "18px 0 12px" }}>What should you learn?</h1>
+            <p style={{ ...styles.muted, fontSize: 18, maxWidth: 700, lineHeight: 1.7 }}>Explore topics on their own, then follow a roadmap when you want a structured path.</p>
+            {Object.values(learningProgress).some((status) => status === "learning") && (() => {
+              const currentId = Object.entries(learningProgress).find(([, status]) => status === "learning")?.[0];
+              const current = currentId ? SKILLS[currentId] : undefined;
+              const intake = loadIntake();
+              const goal = intake?.careerGoal ?? (current ? TOPIC_ROADMAPS[current.id]?.[0] : undefined);
+              return current ? <div style={{ ...styles.card, background: colors.glowCard, marginTop: 25, padding: 22 }}><div style={{ color: colors.purple2, fontWeight: 800, fontSize: 12, letterSpacing: ".1em" }}>CONTINUE YOUR PATH</div><h2 style={{ margin: "8px 0" }}>{goal ? CAREER_LABELS[goal] : "Your learning path"}</h2><p style={{ ...styles.muted, marginTop: 0 }}>Current step: {current.name}</p><button type="button" style={styles.primary} onClick={() => openLearnTopic(current.id, goal)}>Continue learning <ArrowRight size={16} /></button></div> : null;
+            })()}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 18, marginTop: 35 }}>
+              {LEARN_TRACKS.map((track) => <div key={track.title} style={{ ...styles.card, padding: 22 }}><div style={{ color: colors.purple2 }}>{track.icon === "code" ? <Code2 size={24} /> : track.icon === "web" ? <Briefcase size={24} /> : track.icon === "security" ? <Shield size={24} /> : <Sparkles size={24} />}</div><h2 style={{ fontSize: 20, margin: "14px 0 4px" }}>{track.title}</h2><div style={{ color: colors.purple2, fontSize: 13, marginBottom: 14 }}>{track.level}</div><div style={{ display: "grid", gap: 8 }}>{track.topics.map((id) => { const topic = SKILLS[id]; return topic ? <button type="button" key={id} onClick={() => openLearnTopic(id)} className="learn-topic-link">{topic.name}<ArrowRight size={14} /></button> : null; })}</div></div>)}
+            </div>
+            <div style={{ ...styles.card, marginTop: 24, padding: 24 }}><h2 style={{ marginTop: 0 }}>Explore a structured path</h2><p style={styles.muted}>Choose a direction to see how its topics connect.</p><div style={{ display: "flex", flexWrap: "wrap", gap: 9 }}>{(["ai-ml-engineer", "software-engineer", "cybersecurity-engineer", "cloud-engineer"] as CareerGoal[]).map((goal) => <button key={goal} type="button" style={styles.navButton} onClick={() => openCareerRoadmap(goal)}>{CAREER_LABELS[goal]} <ArrowRight size={14} /></button>)}</div></div>
+            <div style={{ ...styles.card, marginTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20, flexWrap: "wrap" }}><div><h3 style={{ margin: "0 0 7px" }}>Connect learning to a career direction.</h3><p style={{ margin: 0, ...styles.muted }}>Explore possibilities before choosing a path.</p></div><button style={styles.primary} onClick={() => navigate("careers")}>Explore Careers <ArrowRight size={17} /></button></div>
+          </>
+        )}
       </div>
     </section>
-
-  );
+    );
+  };
 
   const renderCareers = () => (
     <section style={styles.section}>
@@ -1118,7 +1104,7 @@ const colors = {
                         style={{
                           padding: "8px 12px",
                           borderRadius: 8,
-                          background: "rgba(139,92,246,.1)",
+                          background: "rgba(59,130,246,.1)",
                           color: colors.purple2,
                           fontSize: 13,
                         }}
@@ -1137,7 +1123,12 @@ const colors = {
   );
 
   const renderOpportunities = () => (
-    <NoticesPage colors={colors} profileCity={profile.city} profileState={profile.state} />
+    <NoticesPage
+      colors={colors}
+      profileCity={profile.city}
+      profileState={profile.state}
+      initialSearch={oppSearch}
+    />
   );
 
   const renderProfile = () => (
@@ -1159,6 +1150,7 @@ const colors = {
 
         <div style={{ ...styles.card, maxWidth: 760, marginTop: 45 }}>
           <ProfileAuth
+            colors={colors}
             studentName={profile.name}
             onAuthName={(name) =>
               setProfile((current) =>
@@ -1265,7 +1257,7 @@ const colors = {
                         active ? colors.purple : colors.border
                       }`,
                       background: active
-                        ? "rgba(139,92,246,.15)"
+                        ? "rgba(59,130,246,.15)"
                         : colors.card2,
                       color: active ? colors.purple2 : colors.muted,
                       padding: "9px 12px",
@@ -1291,9 +1283,11 @@ const colors = {
             type="button"
             style={{ ...styles.primary, marginTop: 30 }}
             onClick={async () => {
-              setShowProfile(false);
-              const ok = await persistProfile();
-              if (ok) navigate("roadmap");
+              const ok = await handleSaveProfile();
+              if (ok) {
+                setShowProfile(false);
+                navigate("roadmap");
+              }
             }}
           >
             Save & Start Roadmap
@@ -1319,6 +1313,8 @@ const colors = {
         return renderCareers();
       case "opportunities":
         return renderOpportunities();
+      case "community":
+        return <CommunityPage colors={colors} />;
       case "connect":
         return (
           <ConnectPage
@@ -1326,6 +1322,9 @@ const colors = {
             profile={profile}
             setProfile={setProfile}
             onOpenProfile={openProfile}
+            profileReady={profileReady}
+            profileLoadError={profileLoadError}
+            initialTab={connectTab}
           />
         );
       default:
@@ -1334,10 +1333,15 @@ const colors = {
   };
 
   return (
-    <div style={styles.app}>
+    <div className={`gradivo-app${introVisible ? " intro-active" : ""}`} style={styles.app}>
+      <LiveBackground />
       {renderNavbar()}
 
-      <main aria-label={pageTitle}>{renderPage()}</main>
+      <main className="gradivo-main" aria-label={pageTitle}>
+        <div key={page} className={`page-transition page-${page}`}>
+          {renderPage()}
+        </div>
+      </main>
 
       <section
         aria-label="Contact Gradivo"
@@ -1370,8 +1374,8 @@ const colors = {
               fontWeight: 700,
               color: colors.purple2,
               textDecoration: "none",
-              border: "1px solid rgba(139,92,246,.35)",
-              background: "rgba(139,92,246,.1)",
+              border: "1px solid rgba(59,130,246,.35)",
+              background: "rgba(59,130,246,.1)",
               padding: "10px 18px",
               borderRadius: 10,
               transition: "box-shadow 0.2s ease, background 0.2s ease",
@@ -1424,11 +1428,15 @@ const colors = {
       © 2026 Gradivo. All rights reserved.
     </div>
   </div>
+  <div className="footer-giant" aria-hidden="true">
+    GRADIVO
+  </div>
 </footer>
 
      
       {showProfile && (
         <div
+          className="profile-overlay"
           onClick={() => setShowProfile(false)}
           style={{
             position: "fixed",
@@ -1442,6 +1450,7 @@ const colors = {
           }}
         >
           <div
+            className="profile-dialog"
             onClick={(e) => e.stopPropagation()}
             style={{
               ...styles.card,
@@ -1464,12 +1473,12 @@ const colors = {
                 </div>
               </div>
 
-              <button
+                <button
                 onClick={() => setShowProfile(false)}
                 style={{
                   border: `1px solid ${colors.border}`,
                   background: colors.card2,
-                  color: "white",
+                  color: colors.text,
                   width: 40,
                   height: 40,
                   borderRadius: 10,
@@ -1481,6 +1490,7 @@ const colors = {
             </div>
 
             <ProfileAuth
+              colors={colors}
               studentName={profile.name}
               onAuthName={(name) =>
                 setProfile((current) =>
@@ -1560,6 +1570,11 @@ const colors = {
                   ? "Edit Profile"
                   : "Complete Your Profile"}
             </h2>
+            {profileLoadError ? (
+              <div role="alert" style={{ color: "#fca5a5", marginBottom: 14 }}>
+                {profileLoadError}
+              </div>
+            ) : null}
             <div
               style={{
                 display: "grid",
@@ -1659,7 +1674,7 @@ const colors = {
                           active ? colors.purple : colors.border
                         }`,
                         background: active
-                          ? "rgba(139,92,246,.15)"
+                          ? "rgba(59,130,246,.15)"
                           : colors.card2,
                         color: active ? colors.purple2 : colors.muted,
                         padding: "8px 11px",
@@ -1683,6 +1698,7 @@ const colors = {
 
             {saveError ? (
               <div
+                className="gradivo-notice gradivo-notice-error"
                 role="alert"
                 style={{
                   marginTop: 18,
@@ -1700,6 +1716,7 @@ const colors = {
             ) : null}
             {saveSuccess ? (
               <div
+                className="gradivo-notice gradivo-notice-success"
                 style={{
                   marginTop: 18,
                   padding: "10px 12px",
@@ -1748,34 +1765,7 @@ const colors = {
         </div>
       )}
 
-      {introVisible && (
-        <div
-          aria-hidden="true"
-          className="gradivo-intro"
-          style={{ opacity: introFading ? 0 : 1 }}
-        >
-          <div className="gradivo-intro-inner">
-            <img
-              src={gradivoLogo}
-              alt=""
-              className="gradivo-intro-logo"
-              draggable={false}
-            />
-            <div className="gradivo-intro-word">
-              {"GRADIVO".split("").map((letter, index) => (
-                <span key={index} className="gradivo-intro-mask">
-                  <span
-                    className="gradivo-intro-letter"
-                    style={{ animationDelay: `${0.6 + index * 0.07}s` }}
-                  >
-                    {letter}
-                  </span>
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {introVisible && <IntroAnimation onComplete={handleIntroComplete} />}
 
       <style>{`
         * {
@@ -1802,8 +1792,8 @@ const colors = {
         }
 
         .gradivo-contact-email:hover {
-          background: rgba(139, 92, 246, 0.18);
-          box-shadow: 0 0 18px rgba(139, 92, 246, 0.45);
+          background: rgba(59, 130, 246, 0.18);
+          box-shadow: 0 0 18px rgba(59, 130, 246, 0.45);
           opacity: 1;
         }
 
@@ -1811,94 +1801,6 @@ const colors = {
           display: flex;
           align-items: center;
           gap: 4px;
-        }
-
-        .gradivo-intro {
-          position: fixed;
-          inset: 0;
-          width: 100vw;
-          height: 100vh;
-          overflow: hidden;
-          z-index: 200;
-          background: #000;
-          display: grid;
-          place-items: center;
-          transition: opacity 0.4s ease;
-        }
-
-        .gradivo-intro-inner {
-          display: flex;
-          align-items: center;
-          gap: clamp(10px, 2vw, 18px);
-        }
-
-        .gradivo-intro-logo {
-          display: block;
-          width: clamp(72px, 10vw, 110px);
-          height: auto;
-          border: none;
-          mix-blend-mode: screen;
-          opacity: 0;
-          transform: scale(0.94);
-          animation: gradivo-intro-logo-in 0.8s ease forwards;
-          animation-delay: 0.1s;
-        }
-
-        @keyframes gradivo-intro-logo-in {
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
-        }
-
-        .gradivo-intro-word {
-          display: flex;
-          align-items: center;
-          font-weight: 800;
-          font-size: clamp(30px, 5vw, 54px);
-          letter-spacing: clamp(2px, 0.5vw, 6px);
-          line-height: 1;
-          color: #f5f3ff;
-        }
-
-        .gradivo-intro-mask {
-          display: inline-block;
-          overflow: hidden;
-          padding-bottom: 0.08em;
-          margin-bottom: -0.08em;
-        }
-
-        .gradivo-intro-letter {
-          display: inline-block;
-          transform: translateY(115%);
-          opacity: 0;
-          animation: gradivo-intro-letter-up 0.5s cubic-bezier(0.22, 0.8, 0.3, 1) forwards;
-        }
-
-        @keyframes gradivo-intro-letter-up {
-          0% {
-            transform: translateY(115%);
-            opacity: 0;
-          }
-          30% {
-            opacity: 1;
-          }
-          100% {
-            transform: translateY(0);
-            opacity: 1;
-          }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .gradivo-intro {
-            transition: none;
-          }
-          .gradivo-intro-logo,
-          .gradivo-intro-letter {
-            animation: none;
-            opacity: 1;
-            transform: none;
-          }
         }
 
         .mobile-menu-button {
@@ -1929,24 +1831,5 @@ const colors = {
     </div>
   );
 }
-
-const fieldLabel: React.CSSProperties = {
-  display: "grid",
-  gap: 8,
-  color: "#d4d4d8",
-  fontSize: 13,
-  fontWeight: 650,
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "12px 13px",
-  borderRadius: 9,
-  border: "1px solid #272733",
-  background: "#0b0b10",
-  color: "#f5f3ff",
-  outline: "none",
-  fontSize: 14,
-};
 
 export default App;

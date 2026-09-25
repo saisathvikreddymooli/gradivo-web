@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment files (the Vite client config is public, but keep local settings out of Git).
+.env*
+!.env.example
+!.env.*.example
+
+.vercel

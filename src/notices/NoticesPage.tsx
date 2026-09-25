@@ -47,6 +47,7 @@ type Props = {
   colors: ThemeColors;
   profileCity: string;
   profileState: string;
+  initialSearch?: string;
 };
 
 function locationLabel(item: Opportunity) {
@@ -60,11 +61,11 @@ function locationLabel(item: Opportunity) {
   return "📍 Location TBA";
 }
 
-export default function NoticesPage({ colors, profileCity, profileState }: Props) {
+export default function NoticesPage({ colors, profileCity, profileState, initialSearch = "" }: Props) {
   const [items, setItems] = useState<Opportunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState<Category>("all");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
   const [location, setLocation] = useState<string>("My Location");
   const [mode, setMode] = useState<string>("All Modes");
   const [sortAsc, setSortAsc] = useState(true);
@@ -93,7 +94,7 @@ export default function NoticesPage({ colors, profileCity, profileState }: Props
     width: "100%",
     padding: "12px 13px",
     borderRadius: 10,
-    border: `1px solid ${colors.border}`,
+    border: `1px solid ${colors.inputBorder}`,
     background: colors.card2,
     color: colors.text,
     outline: "none",
@@ -112,7 +113,7 @@ export default function NoticesPage({ colors, profileCity, profileState }: Props
     gap: 7,
     textDecoration: "none",
     fontSize: 14,
-    boxShadow: "0 8px 30px rgba(139,92,246,.2)",
+    boxShadow: "0 8px 30px rgba(59,130,246,.2)",
   };
   const ghost: CSSProperties = {
     border: `1px solid ${colors.border}`,
@@ -189,8 +190,8 @@ export default function NoticesPage({ colors, profileCity, profileState }: Props
               gap: 7,
               padding: "7px 12px",
               borderRadius: 999,
-              border: "1px solid rgba(139,92,246,.35)",
-              background: "rgba(139,92,246,.1)",
+              border: "1px solid rgba(59,130,246,.35)",
+              background: "rgba(59,130,246,.1)",
               color: colors.purple2,
               fontSize: 13,
               fontWeight: 600,
@@ -315,7 +316,7 @@ export default function NoticesPage({ colors, profileCity, profileState }: Props
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))",
               gap: 16,
               marginTop: 20,
             }}
@@ -338,7 +339,7 @@ export default function NoticesPage({ colors, profileCity, profileState }: Props
                   }}
                 >
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-                    <span style={{ ...badge, background: "rgba(139,92,246,.12)", color: colors.purple2 }}>
+                    <span style={{ ...badge, background: "rgba(59,130,246,.12)", color: colors.purple2 }}>
                       {isInternship ? <Briefcase size={12} /> : <Rocket size={12} />}
                       {isInternship ? "💼 Internship" : "🏆 Hackathon"}
                     </span>
@@ -410,7 +411,7 @@ export default function NoticesPage({ colors, profileCity, profileState }: Props
                             fontSize: 11,
                             padding: "4px 9px",
                             borderRadius: 999,
-                            background: "rgba(139,92,246,.12)",
+                            background: "rgba(59,130,246,.12)",
                             color: colors.purple2,
                           }}
                         >

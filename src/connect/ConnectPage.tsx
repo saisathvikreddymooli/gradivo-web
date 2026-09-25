@@ -75,6 +75,9 @@ type Props = {
   profile: AppStudentProfile;
   setProfile: Dispatch<SetStateAction<AppStudentProfile>>;
   onOpenProfile: () => void;
+  profileReady: boolean;
+  profileLoadError: string;
+  initialTab?: ConnectTab;
 };
 
 function formatTime(ms: number | null) {
@@ -130,12 +133,12 @@ function Avatar({
   }
   return (
     <div
+      className="connect-empty-state avatar-letter"
       style={{
         width: size,
         height: size,
         borderRadius: "50%",
-        background: "rgba(139,92,246,.18)",
-        color: "#a78bfa",
+        background: "rgba(59,130,246,.18)",
         display: "grid",
         placeItems: "center",
         fontWeight: 800,
@@ -160,24 +163,27 @@ function EmptyState({
     <div
       style={{
         border: `1px dashed ${colors.border}`,
-        background: "rgba(139,92,246,.06)",
+        background: "rgba(59,130,246,.06)",
         borderRadius: 18,
         padding: "36px 22px",
         textAlign: "center",
       }}
     >
+      <div className="empty-state-icon" aria-hidden="true">
+        {title.toLowerCase().includes("loading") ? <span className="gradivo-spinner" /> : <span>✦</span>}
+      </div>
       <div style={{ fontWeight: 750, fontSize: 18, marginBottom: 8 }}>{title}</div>
       <div style={{ color: colors.muted, lineHeight: 1.6 }}>{text}</div>
     </div>
   );
 }
 
-export default function ConnectPage({ colors, profile, setProfile, onOpenProfile }: Props) {
+export default function ConnectPage({ colors, profile, setProfile, onOpenProfile, profileReady, profileLoadError, initialTab = "discover" }: Props) {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(auth.currentUser);
   const [me, setMe] = useState<ConnectUser | null>(null);
   const [people, setPeople] = useState<ConnectUser[]>([]);
   const [blocked, setBlocked] = useState<Set<string>>(new Set());
-  const [tab, setTab] = useState<ConnectTab>("discover");
+  const [tab, setTab] = useState<ConnectTab>(initialTab);
   const [search, setSearch] = useState("");
   const [country, setCountry] = useState(DEFAULT_COUNTRY);
   const [state, setState] = useState("");
@@ -199,7 +205,10 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
   const [groupMembers, setGroupMembers] = useState<string[]>([]);
   const [groupDraft, setGroupDraft] = useState("");
   const [projects, setProjects] = useState<ProjectRequest[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [joining, setJoining] = useState<Set<string>>(new Set());
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState(REPORT_REASONS[0]);
@@ -214,6 +223,8 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
   const [memberQuery, setMemberQuery] = useState("");
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [dataReady, setDataReady] = useState(false);
   const [addMemberQuery, setAddMemberQuery] = useState("");
   const [managingMembers, setManagingMembers] = useState(false);
   const [isMobile, setIsMobile] = useState(
@@ -249,14 +260,24 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
   useEffect(() => {
     if (!firebaseUser) {
       setMe(null);
+      setDataReady(false);
       return;
     }
+    setDataReady(false);
     let stopPresence = false;
     ensureUserDocument(firebaseUser, profileRef.current)
       .then((user) => {
-        if (!stopPresence) setMe(user);
+        if (!stopPresence) {
+          setMe(user);
+          setDataReady(true);
+        }
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Could not load profile."));
+      .catch((err) => {
+        if (!stopPresence) {
+          setDataReady(true);
+          setError(err instanceof Error ? err.message : "Could not load profile.");
+        }
+      });
     ensureDefaultGroups().catch(() => undefined);
     const unsub = listenUser(firebaseUser.uid, (user) => {
       if (user) {
@@ -300,14 +321,24 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
   }, [firebaseUser, setProfile]);
 
   useEffect(() => {
-    if (!firebaseUser) return;
+    if (!firebaseUser) {
+      setProjectsLoading(false);
+      return;
+    }
+    setProjectsLoading(true);
     const unsubs = [
       listenUsers(setPeople),
       listenOutgoingBlocks(firebaseUser.uid, setBlocked),
       listenConversations(firebaseUser.uid, setConversations),
       listenGroups(setGroups),
       listenMyGroupIds(firebaseUser.uid, setJoined),
-      listenProjects(setProjects),
+      listenProjects((items) => {
+        setProjects(items);
+        setProjectsLoading(false);
+      }, (err) => {
+        setProjectsLoading(false);
+        setError(`Could not load project requests: ${err.message}`);
+      }),
     ];
     return () => unsubs.forEach((unsub) => unsub());
   }, [firebaseUser]);
@@ -411,18 +442,18 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
     width: "100%",
     padding: "12px 13px",
     borderRadius: 10,
-    border: `1px solid ${colors.border}`,
+    border: `1px solid ${colors.inputBorder}`,
     background: colors.card2,
     color: colors.text,
     outline: "none",
     fontSize: 14,
   };
   const card: CSSProperties = {
-    background: "rgba(16,16,22,.82)",
+    background: colors.panel,
     border: `1px solid ${colors.border}`,
     borderRadius: 18,
     padding: 18,
-    boxShadow: "0 0 28px rgba(139,92,246,.08)",
+    boxShadow: "0 0 28px rgba(59,130,246,.08)",
     backdropFilter: "blur(12px)",
     textAlign: "left",
   };
@@ -434,7 +465,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
     borderRadius: 10,
     cursor: "pointer",
     fontWeight: 700,
-    boxShadow: "0 8px 30px rgba(139,92,246,.2)",
+    boxShadow: "0 8px 30px rgba(59,130,246,.2)",
   };
   const ghost: CSSProperties = {
     border: `1px solid ${colors.border}`,
@@ -525,6 +556,16 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
     if (!firebaseUser || creating) return;
     if (!groupName.trim()) {
       setError("Give your group a name.");
+      setSuccess("");
+      return;
+    }
+    if (
+      groups.some(
+        (group) => group.name.trim().toLowerCase() === groupName.trim().toLowerCase(),
+      )
+    ) {
+      setError("A group with this name already exists. Please choose another name.");
+      setSuccess("");
       return;
     }
     setCreating(true);
@@ -535,6 +576,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
         type: groupType,
         memberIds: selectedMembers,
       });
+      const createdName = groupName.trim();
       setCreateOpen(false);
       setGroupName("");
       setGroupDesc("");
@@ -542,10 +584,43 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
       setMemberQuery("");
       setSelectedMembers([]);
       setActiveGroup(id);
+      setError("");
+      setSuccess(`"${createdName}" created successfully! You are its admin.`);
     } catch (err) {
+      setSuccess("");
       setError(err instanceof Error ? err.message : "Could not create group.");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleJoinGroup(groupId: string) {
+    if (!firebaseUser || joining.has(groupId)) return;
+    const group = groups.find((item) => item.id === groupId);
+    if (group && isGroupMember(group)) {
+      // Already a member: no duplicate write, just confirm the state.
+      setError("");
+      setSuccess(`You are already a member of "${group.name}".`);
+      return;
+    }
+    setJoining((current) => new Set(current).add(groupId));
+    try {
+      await joinGroup(groupId, firebaseUser.uid);
+      setError("");
+      setSuccess(group ? `You joined "${group.name}"!` : "You joined the group!");
+    } catch (err) {
+      setSuccess("");
+      setError(
+        err instanceof Error
+          ? `Could not join${group ? ` "${group.name}"` : ""}: ${err.message}`
+          : "Could not join the group.",
+      );
+    } finally {
+      setJoining((current) => {
+        const next = new Set(current);
+        next.delete(groupId);
+        return next;
+      });
     }
   }
 
@@ -687,7 +762,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
                     gap: 4,
                     fontSize: 11,
                     color: colors.purple2,
-                    border: "1px solid rgba(139,92,246,.4)",
+                    border: "1px solid rgba(59,130,246,.4)",
                     padding: "3px 8px",
                     borderRadius: 999,
                   }}
@@ -717,7 +792,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
                 fontSize: 11,
                 padding: "4px 8px",
                 borderRadius: 999,
-                background: "rgba(139,92,246,.12)",
+                background: "rgba(59,130,246,.12)",
                 color: colors.purple2,
               }}
             >
@@ -776,7 +851,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
             <h1 style={{ marginTop: 0, fontSize: 32, letterSpacing: "-0.8px", lineHeight: 1.2 }}>
               Log in to meet students across India
             </h1>
-            <ProfileAuth studentName={profile.name} />
+            <ProfileAuth colors={colors} studentName={profile.name} />
           </div>
         </div>
       </section>
@@ -793,7 +868,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
             borderRadius: 24,
             border: `1px solid ${colors.border}`,
             background:
-              "linear-gradient(135deg, rgba(139,92,246,.16), rgba(16,16,22,.92))",
+              colors.glowCard,
             padding: "38px 28px",
             marginBottom: 28,
           }}
@@ -805,7 +880,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
               height: 280,
               right: -60,
               top: -80,
-              background: "rgba(139,92,246,.25)",
+              background: "rgba(59,130,246,.25)",
               filter: "blur(70px)",
               borderRadius: "50%",
             }}
@@ -818,7 +893,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
                 gap: 8,
                 padding: "7px 12px",
                 borderRadius: 999,
-                border: "1px solid rgba(139,92,246,.35)",
+                border: "1px solid rgba(59,130,246,.35)",
                 color: colors.purple2,
                 fontSize: 13,
                 fontWeight: 700,
@@ -844,6 +919,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
 
         {error ? (
           <div
+            className="connect-toast gradivo-notice-error"
             style={{
               ...card,
               marginBottom: 16,
@@ -858,7 +934,24 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
           </div>
         ) : null}
 
-        {!me?.college || !me?.state ? (
+        {success ? (
+          <div
+            className="connect-toast gradivo-notice-success"
+            style={{
+              ...card,
+              marginBottom: 16,
+              color: "#6ee7b7",
+              borderColor: "rgba(52,211,153,.4)",
+            }}
+          >
+            {success}
+            <button type="button" style={{ ...ghost, marginLeft: 12 }} onClick={() => setSuccess("")}>
+              Dismiss
+            </button>
+          </div>
+        ) : null}
+
+        {profileReady && dataReady && !profileLoadError && firebaseUser && (!me?.name.trim() || !me?.college.trim() || !me?.state.trim()) ? (
           <div style={{ ...card, marginBottom: 16 }}>
             Complete your college and state in Profile so other students can find you.
             <button type="button" style={{ ...primary, marginLeft: 12 }} onClick={onOpenProfile}>
@@ -881,6 +974,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
             <button
               key={item.id}
               type="button"
+              aria-selected={tab === item.id}
               onClick={() => setTab(item.id)}
               style={{
                 ...ghost,
@@ -926,7 +1020,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
                       style={{
                         ...ghost,
                         padding: "8px 11px",
-                        background: helpArea === item ? "rgba(139,92,246,.15)" : colors.card2,
+                        background: helpArea === item ? "rgba(59,130,246,.15)" : colors.card2,
                         color: helpArea === item ? colors.purple2 : colors.muted,
                       }}
                     >
@@ -1023,6 +1117,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
                             <div style={{ color: colors.purple2, fontSize: 12, fontWeight: 700 }}>
                               {group.type === "private" ? "Private" : "Public"}
                               {` · ${group.members.length || group.memberCount} members`}
+                              {isGroupMember(group) ? " · ✓ Joined" : ""}
                             </div>
                             <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                               <button
@@ -1061,13 +1156,24 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
                               {group.state ? ` · ${group.state}` : ""} · {group.members.length || group.memberCount} members
                             </div>
                             <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                              <button
-                                type="button"
-                                style={primary}
-                                onClick={() => joinGroup(group.id, firebaseUser.uid)}
-                              >
-                                Join
-                              </button>
+                              {isGroupMember(group) ? (
+                                <button
+                                  type="button"
+                                  style={{ ...ghost, color: colors.purple2 }}
+                                  disabled
+                                >
+                                  ✓ Joined
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  style={primary}
+                                  disabled={joining.has(group.id)}
+                                  onClick={() => handleJoinGroup(group.id)}
+                                >
+                                  {joining.has(group.id) ? "Joining…" : "Join"}
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 style={ghost}
@@ -1099,7 +1205,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
                             fontSize: 11,
                             padding: "3px 9px",
                             borderRadius: 999,
-                            border: "1px solid rgba(139,92,246,.4)",
+                            border: "1px solid rgba(59,130,246,.4)",
                             color: colors.purple2,
                             fontWeight: 700,
                           }}
@@ -1144,7 +1250,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
                               {id === activeGroupData.createdBy ? " · Creator" : null}
                             </span>
                             {isAdmin ? (
-                              <span style={{ fontSize: 10, color: colors.purple2, fontWeight: 700, border: "1px solid rgba(139,92,246,.4)", padding: "2px 7px", borderRadius: 999 }}>
+                              <span style={{ fontSize: 10, color: colors.purple2, fontWeight: 700, border: "1px solid rgba(59,130,246,.4)", padding: "2px 7px", borderRadius: 999 }}>
                                 ADMIN
                               </span>
                             ) : null}
@@ -1260,8 +1366,13 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
                     </form>
                   ) : (
                     <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-                      <button type="button" style={primary} onClick={() => joinGroup(activeGroupData.id, firebaseUser.uid)}>
-                        Join to chat
+                      <button
+                        type="button"
+                        style={primary}
+                        disabled={joining.has(activeGroupData.id)}
+                        onClick={() => handleJoinGroup(activeGroupData.id)}
+                      >
+                        {joining.has(activeGroupData.id) ? "Joining…" : "Join to chat"}
                       </button>
                     </div>
                   )}
@@ -1308,7 +1419,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
                             gap: 10,
                             textAlign: "left",
                             alignItems: "center",
-                            background: activeConv === item.id ? "rgba(139,92,246,.12)" : colors.card2,
+                            background: activeConv === item.id ? "rgba(59,130,246,.12)" : colors.card2,
                           }}
                         >
                           <Avatar user={peer ?? { name: "Student", photoURL: "" }} size={40} />
@@ -1492,7 +1603,9 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
             <button type="button" style={{ ...primary, marginBottom: 16 }} onClick={() => setProjectOpen(true)}>
               Create project request
             </button>
-            {projects.length === 0 ? (
+            {projectsLoading ? (
+              <EmptyState colors={colors} title="Loading project requests…" text="Fetching saved projects from Firebase." />
+            ) : projects.length === 0 ? (
               <EmptyState colors={colors} title="No project requests found." text="Create one to find teammates for a hackathon or campus project." />
             ) : (
               <div
@@ -1523,7 +1636,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
                               fontSize: 11,
                               padding: "4px 8px",
                               borderRadius: 999,
-                              background: "rgba(139,92,246,.12)",
+                              background: "rgba(59,130,246,.12)",
                               color: colors.purple2,
                             }}
                           >
@@ -1581,6 +1694,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
 
       {createOpen ? (
         <div
+          className="connect-modal-overlay"
           onClick={() => setCreateOpen(false)}
           style={{
             position: "fixed",
@@ -1593,6 +1707,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
           }}
         >
           <form
+            className="connect-modal-dialog"
             onClick={(e) => e.stopPropagation()}
             onSubmit={handleCreateGroup}
             style={{ ...card, width: "min(520px,100%)", maxHeight: "85vh", overflowY: "auto", display: "grid", gap: 12 }}
@@ -1630,7 +1745,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
                     style={{
                       ...ghost,
                       flex: 1,
-                      background: groupType === t ? "rgba(139,92,246,.15)" : colors.card2,
+                      background: groupType === t ? "rgba(59,130,246,.15)" : colors.card2,
                       color: groupType === t ? colors.purple2 : colors.muted,
                       borderColor: groupType === t ? colors.purple : colors.border,
                     }}
@@ -1659,7 +1774,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
                           fontSize: 12,
                           padding: "5px 6px 5px 10px",
                           borderRadius: 999,
-                          background: "rgba(139,92,246,.15)",
+                          background: "rgba(59,130,246,.15)",
                           color: colors.purple2,
                           display: "inline-flex",
                           gap: 6,
@@ -1767,6 +1882,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
           }}
         >
           <form
+            className="connect-modal-dialog"
             onClick={(e) => e.stopPropagation()}
             onSubmit={async (event) => {
               event.preventDefault();
@@ -1804,6 +1920,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
 
       {projectOpen ? (
         <div
+          className="connect-modal-overlay"
           onClick={() => setProjectOpen(false)}
           style={{
             position: "fixed",
@@ -1819,24 +1936,47 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
             onClick={(e) => e.stopPropagation()}
             onSubmit={async (event) => {
               event.preventDefault();
-              await createProjectRequest(firebaseUser.uid, {
-                projectName: projectForm.projectName,
-                description: projectForm.description,
-                technologies: projectForm.technologies.split(",").map((item) => item.trim()).filter(Boolean),
-                requiredSkills: projectForm.requiredSkills.split(",").map((item) => item.trim()).filter(Boolean),
-                teamSize: Number(projectForm.teamSize) || 1,
-                college: projectForm.college || profile.college,
-                country: DEFAULT_COUNTRY,
-                state: projectForm.state || profile.state,
-                deadline: projectForm.deadline,
-              });
-              setProjectOpen(false);
+              if (creatingProject) return;
+              if (!firebaseUser || auth.currentUser?.uid !== firebaseUser.uid) {
+                setError("Please log in to continue.");
+                setSuccess("");
+                return;
+              }
+              setCreatingProject(true);
+              setError("");
+              try {
+                await createProjectRequest(firebaseUser.uid, {
+                  projectName: projectForm.projectName,
+                  description: projectForm.description,
+                  technologies: projectForm.technologies.split(",").map((item) => item.trim()).filter(Boolean),
+                  requiredSkills: projectForm.requiredSkills.split(",").map((item) => item.trim()).filter(Boolean),
+                  teamSize: Number(projectForm.teamSize),
+                  college: projectForm.college || profile.college,
+                  country: profile.country || DEFAULT_COUNTRY,
+                  state: projectForm.state || profile.state,
+                  deadline: projectForm.deadline,
+                });
+                setProjectOpen(false);
+                setProjectForm((current) => ({ ...current, projectName: "", description: "", technologies: "", requiredSkills: "", deadline: "" }));
+                setSuccess("Project request published successfully.");
+              } catch (err) {
+                const firebaseError = err as { code?: unknown; message?: unknown };
+                const code = typeof firebaseError?.code === "string" ? ` (${firebaseError.code})` : "";
+                const message = typeof firebaseError?.message === "string"
+                  ? firebaseError.message
+                  : "Could not publish the project request.";
+                setError(`${message}${code}`);
+                setSuccess("");
+              } finally {
+                setCreatingProject(false);
+              }
             }}
             style={{ ...card, width: "min(520px,100%)", display: "grid", gap: 10 }}
           >
             <h3 style={{ margin: 0 }}>Find Project Teammates</h3>
             <input
               required
+              maxLength={120}
               value={projectForm.projectName}
               onChange={(e) => setProjectForm({ ...projectForm, projectName: e.target.value })}
               placeholder="Project name"
@@ -1893,8 +2033,8 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
               onChange={(e) => setProjectForm({ ...projectForm, deadline: e.target.value })}
               style={inputStyle}
             />
-            <button type="submit" style={primary}>
-              Publish request
+            <button type="submit" style={primary} disabled={creatingProject || !firebaseUser}>
+              {creatingProject ? "Publishing…" : "Publish request"}
             </button>
           </form>
         </div>

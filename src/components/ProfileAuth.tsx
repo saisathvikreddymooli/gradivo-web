@@ -16,6 +16,7 @@ import {
 } from "firebase/auth";
 import { LogOut, Mail, Phone } from "lucide-react";
 import { auth } from "../firebase/config";
+import type { ThemeColors } from "../connect/types";
 
 type Mode = "login" | "signup";
 type Method = "email" | "phone";
@@ -24,61 +25,24 @@ type ProfileAuthProps = {
   children?: ReactNode;
   studentName?: string;
   onAuthName?: (name: string) => void;
+  colors?: ThemeColors;
 };
 
-const purple = "#8b5cf6";
-const purple2 = "#a78bfa";
-const border = "#272733";
-const card2 = "#15151d";
-const muted = "#a1a1aa";
-
-const inputStyle: CSSProperties = {
-  width: "100%",
-  padding: "12px 13px",
-  borderRadius: 9,
-  border: `1px solid ${border}`,
-  background: "#0b0b10",
-  color: "#f5f3ff",
-  outline: "none",
-  fontSize: 14,
-};
-
-const fieldLabel: CSSProperties = {
-  display: "grid",
-  gap: 8,
-  color: "#d4d4d8",
-  fontSize: 13,
-  fontWeight: 650,
-  textAlign: "left",
-};
-
-const primaryBtn: CSSProperties = {
-  border: "none",
-  background: purple,
-  color: "white",
-  padding: "12px 18px",
-  borderRadius: 10,
-  cursor: "pointer",
-  fontWeight: 700,
-  width: "100%",
-  fontSize: 14,
-  boxShadow: "0 8px 30px rgba(139,92,246,.2)",
-};
-
-const secondaryBtn: CSSProperties = {
-  border: `1px solid ${border}`,
-  background: card2,
-  color: "#f5f3ff",
-  padding: "12px 18px",
-  borderRadius: 10,
-  cursor: "pointer",
-  fontWeight: 650,
-  width: "100%",
-  fontSize: 14,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 10,
+const fallbackColors: ThemeColors = {
+  bg: "#070706",
+  card: "#101016",
+  card2: "#15151d",
+  border: "#272733",
+  inputBorder: "#272733",
+    purple: "#3B82F6",
+    purple2: "#60A5FA",
+  text: "#f5f3ff",
+  muted: "#a1a1aa",
+  labelText: "#d4d4d8",
+  inputBg: "#0b0b10",
+  navBg: "rgba(7,7,11,0.88)",
+  panel: "rgba(16,16,22,.82)",
+  glowCard: "linear-gradient(135deg, rgba(59,130,246,.14), rgba(16,16,22,.9))",
 };
 
 function mapAuthError(code: string): string {
@@ -146,7 +110,64 @@ export default function ProfileAuth({
   children,
   studentName,
   onAuthName,
+  colors,
 }: ProfileAuthProps) {
+  const c = colors ?? fallbackColors;
+  const purple = c.purple;
+  const purple2 = c.purple2;
+  const border = c.border;
+  const card2 = c.card2;
+  const muted = c.muted;
+
+  const inputStyle: CSSProperties = {
+    width: "100%",
+    padding: "12px 13px",
+    borderRadius: 9,
+    border: `1px solid ${c.inputBorder}`,
+    background: c.inputBg,
+    color: c.text,
+    outline: "none",
+    fontSize: 14,
+  };
+
+  const fieldLabel: CSSProperties = {
+    display: "grid",
+    gap: 8,
+    color: c.labelText,
+    fontSize: 13,
+    fontWeight: 650,
+    textAlign: "left",
+  };
+
+  const primaryBtn: CSSProperties = {
+    border: "none",
+    background: purple,
+    color: "white",
+    padding: "12px 18px",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontWeight: 700,
+    width: "100%",
+    fontSize: 14,
+    boxShadow: "0 8px 30px rgba(59,130,246,.2)",
+  };
+
+  const secondaryBtn: CSSProperties = {
+    border: `1px solid ${border}`,
+    background: card2,
+    color: c.text,
+    padding: "12px 18px",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontWeight: 650,
+    width: "100%",
+    fontSize: 14,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  };
+
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
   const [mode, setMode] = useState<Mode>("login");
@@ -407,7 +428,7 @@ export default function ProfileAuth({
                 width: 56,
                 height: 56,
                 borderRadius: "50%",
-                background: "rgba(139,92,246,.18)",
+                background: "rgba(59,130,246,.18)",
                 color: purple2,
                 display: "grid",
                 placeItems: "center",
@@ -456,8 +477,8 @@ export default function ProfileAuth({
               marginBottom: 18,
               padding: 14,
               borderRadius: 12,
-              border: "1px solid rgba(139,92,246,.35)",
-              background: "rgba(139,92,246,.08)",
+              border: "1px solid rgba(59,130,246,.35)",
+              background: "rgba(59,130,246,.08)",
               color: muted,
               fontSize: 13,
               lineHeight: 1.6,

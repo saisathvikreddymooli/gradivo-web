@@ -88,10 +88,22 @@ export type ThemeColors = {
   card: string;
   card2: string;
   border: string;
+  /** Form/input borders (stronger than card borders in light theme). */
+  inputBorder: string;
   purple: string;
   purple2: string;
   text: string;
   muted: string;
+  /** Form labels and secondary headings. */
+  labelText: string;
+  /** Text inputs, selects, textareas. */
+  inputBg: string;
+  /** Sticky navbar background (translucent). */
+  navBg: string;
+  /** Translucent Connect cards. */
+  panel: string;
+  /** Violet gradient highlight cards. */
+  glowCard: string;
 };
 
 export type AppStudentProfile = {

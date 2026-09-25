@@ -69,6 +69,15 @@ service cloud.firestore {
           || request.auth.uid == groupData(groupId).get('createdBy', ''));
     }
 
+    // A group and its member records are committed together. getAfter lets
+    // the member-record rules verify the creator against that batch's group.
+    function isGroupAdminAfter(groupId) {
+      let data = getAfter(/databases/$(database)/documents/groups/$(groupId)).data;
+      return signedIn()
+        && (request.auth.uid in data.get('admins', [])
+          || request.auth.uid == data.get('createdBy', ''));
+    }
+
     match /users/{userId} {
       allow read: if signedIn();
       allow create: if isUser(userId)
@@ -76,7 +85,10 @@ service cloud.firestore {
         && request.resource.data.isVerifiedSenior == false
         && validProfilePhone();
       allow update: if isUser(userId)
-        && request.resource.data.isVerifiedSenior == resource.data.isVerifiedSenior
+        // Older profiles may not have this field yet. Treat an absent value
+        // as false while still preventing clients from changing verification.
+        && request.resource.data.get('isVerifiedSenior', false)
+          == resource.data.get('isVerifiedSenior', false)
         && validProfilePhone();
       allow delete: if false;
     }
@@ -107,17 +119,39 @@ service cloud.firestore {
     match /groups/{groupId} {
       allow read: if signedIn();
       allow create: if signedIn()
+        && (request.resource.data.createdBy == request.auth.uid
+          || (request.resource.data.createdBy == 'system'
+            && (groupId in ['india-students', 'first-year', 'cybersecurity', 'ai-ml', 'machine-learning', 'web-dev', 'cloud', 'programming', 'hackathons', 'project-partners', 'internships', 'startups', 'cse', 'ise', 'ece']
+              || groupId.matches('state-[a-z0-9-]+'))))
+        && request.resource.data.admins is list
+        && request.resource.data.members is list
+        && (request.resource.data.createdBy == 'system'
+          || (request.auth.uid in request.resource.data.admins
+            && request.auth.uid in request.resource.data.members))
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
-        && request.resource.data.name.size() < 120;
-      allow update: if signedIn();
+        && request.resource.data.name.size() <= 100
+        && request.resource.data.type in ['public', 'private'];
+      allow update: if signedIn() && (
+        (isGroupAdmin(groupId)
+          && request.resource.data.get('createdBy', resource.data.get('createdBy', ''))
+            == resource.data.get('createdBy', ''))
+        || (isGroupMemberAny(groupId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberCount'])
+          && ((request.auth.uid in resource.data.get('members', [])
+              && !(request.auth.uid in request.resource.data.get('members', []))
+              && request.resource.data.get('memberCount', 0) == resource.data.get('memberCount', 0) - 1)
+            || (!(request.auth.uid in resource.data.get('members', []))
+              && request.auth.uid in request.resource.data.get('members', [])
+              && request.resource.data.get('memberCount', 0) == resource.data.get('memberCount', 0) + 1)))
+      );
       allow delete: if false;
 
       match /members/{userId} {
         allow read: if signedIn();
-        allow create: if isUser(userId) || isGroupAdmin(groupId);
+        allow create: if isUser(userId) || isGroupAdminAfter(groupId);
         allow delete: if isUser(userId) || isGroupAdmin(groupId);
-        allow update: if isUser(userId) || isGroupAdmin(groupId);
+        allow update: if isGroupAdmin(groupId);
       }
 
       match /messages/{messageId} {
@@ -136,7 +170,7 @@ service cloud.firestore {
       allow read: if signedIn() && resource.data.userId == request.auth.uid;
       allow create: if signedIn()
         && (request.resource.data.userId == request.auth.uid
-          || isGroupAdmin(request.resource.data.groupId));
+          || isGroupAdminAfter(request.resource.data.groupId));
       allow delete: if signedIn()
         && (resource.data.userId == request.auth.uid
           || isGroupAdmin(resource.data.groupId));
@@ -145,8 +179,29 @@ service cloud.firestore {
 
     match /projectRequests/{projectId} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.creatorId == request.auth.uid;
-      allow update, delete: if signedIn() && resource.data.creatorId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.creatorId == request.auth.uid
+        && request.resource.data.projectName is string
+        && request.resource.data.projectName.size() > 0
+        && request.resource.data.projectName.size() <= 120
+        && request.resource.data.description is string
+        && request.resource.data.description.size() > 0
+        && request.resource.data.technologies is list
+        && request.resource.data.requiredSkills is list
+        && (request.resource.data.teamSize is int
+          || request.resource.data.teamSize is float)
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.teamSize >= 1
+        && request.resource.data.teamSize <= 100
+        && request.resource.data.college is string
+        && request.resource.data.country is string
+        && request.resource.data.state is string
+        && request.resource.data.deadline is string
+        && request.resource.data.status == 'open';
+      allow update: if signedIn()
+        && resource.data.creatorId == request.auth.uid
+        && request.resource.data.creatorId == resource.data.creatorId;
+      allow delete: if signedIn() && resource.data.creatorId == request.auth.uid;
     }
 
     // Curated real-world opportunities (internships, hackathons).

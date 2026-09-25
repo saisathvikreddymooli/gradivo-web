@@ -35,7 +35,7 @@ function Chip({
       onClick={onClick}
       style={{
         border: `1px solid ${active ? colors.purple : colors.border}`,
-        background: active ? "rgba(139,92,246,.15)" : colors.card2,
+        background: active ? "rgba(59,130,246,.15)" : colors.card2,
         color: active ? colors.purple2 : colors.muted,
         padding: "8px 11px",
         borderRadius: 8,
@@ -65,7 +65,7 @@ export default function ConnectProfileFields({
     width: "100%",
     padding: "12px 13px",
     borderRadius: 9,
-    border: `1px solid ${colors.border}`,
+    border: `1px solid ${colors.inputBorder}`,
     background: colors.card2,
     color: colors.text,
     outline: "none",
@@ -235,8 +235,8 @@ export default function ConnectProfileFields({
       {verifiedSenior ? (
         <div
           style={{
-            border: "1px solid rgba(139,92,246,.35)",
-            background: "rgba(139,92,246,.1)",
+            border: "1px solid rgba(59,130,246,.35)",
+            background: "rgba(59,130,246,.1)",
             color: colors.purple2,
             padding: "10px 12px",
             borderRadius: 10,

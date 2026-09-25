@@ -16,13 +16,14 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
   type Timestamp,
   type Unsubscribe,
 } from "firebase/firestore";
 import type { User } from "firebase/auth";
-import { db } from "../firebase/config";
+import { auth, db } from "../firebase/config";
 import { DEFAULT_COUNTRY, DEFAULT_GROUPS } from "./constants";
 import type {
   AppStudentProfile,
@@ -239,8 +240,21 @@ export async function saveConnectProfile(
   email = "",
   phone = "",
 ): Promise<void> {
+  if (!uid.trim()) throw new Error("Cannot save a profile without an authenticated Firebase UID.");
+  if (auth.currentUser?.uid !== uid) {
+    const error = new Error("The profile UID does not match the currently authenticated Firebase user.") as Error & { code: string };
+    error.code = auth.currentUser ? "auth/user-mismatch" : "auth/no-current-user";
+    console.error("[Firebase] Profile save authentication check failed", {
+      operation: "verify authenticated profile UID",
+      code: error.code,
+      message: error.message,
+      uid,
+      authenticatedUid: auth.currentUser?.uid ?? null,
+      documentPath: `users/${uid}`,
+    });
+    throw error;
+  }
   const ref = doc(db, "users", uid);
-  const snap = await getDoc(ref);
   const payload = {
     name: profile.name.trim(),
     email,
@@ -263,17 +277,64 @@ export async function saveConnectProfile(
     updatedAt: serverTimestamp(),
   };
 
+  // Keep this payload limited to Firestore-supported values. This guard also
+  // catches regressions where an optional form field becomes undefined.
+  for (const [field, value] of Object.entries(payload)) {
+    if (value === undefined) {
+      const error = new Error(`Profile field "${field}" is undefined.`);
+      console.error("[Firebase] Profile payload validation failed", {
+        operation: "validate profile payload",
+        code: "profile/undefined-field",
+        message: error.message,
+        uid,
+        documentPath: ref.path,
+        field,
+      });
+      throw error;
+    }
+  }
+
+  let snap;
+  try {
+    snap = await getDoc(ref);
+  } catch (error) {
+    logProfileFirebaseError("read profile before save", error, uid, ref.path);
+    throw error;
+  }
+
   if (!snap.exists()) {
-    await setDoc(ref, {
-      ...payload,
-      isVerifiedSenior: false,
-      online: true,
-      createdAt: serverTimestamp(),
-    });
+    try {
+      await setDoc(ref, {
+        ...payload,
+        isVerifiedSenior: false,
+        online: true,
+        createdAt: serverTimestamp(),
+      });
+    } catch (error) {
+      logProfileFirebaseError("create profile", error, uid, ref.path);
+      throw error;
+    }
     return;
   }
 
-  await updateDoc(ref, payload);
+  try {
+    await updateDoc(ref, payload);
+  } catch (error) {
+    logProfileFirebaseError("update profile", error, uid, ref.path);
+    throw error;
+  }
+}
+
+function logProfileFirebaseError(operation: string, error: unknown, uid: string, documentPath: string) {
+  const firebaseError = error as { code?: unknown; message?: unknown };
+  console.error("[Firebase] Profile save operation failed", {
+    operation,
+    code: typeof firebaseError?.code === "string" ? firebaseError.code : "unknown",
+    message: typeof firebaseError?.message === "string" ? firebaseError.message : String(error),
+    uid,
+    documentPath,
+    error,
+  });
 }
 
 export async function setUserPresence(uid: string, online: boolean): Promise<void> {
@@ -480,22 +541,23 @@ let groupsSeeded = false;
 export async function ensureDefaultGroups(): Promise<void> {
   if (groupsSeeded) return;
   groupsSeeded = true;
-  await Promise.all(
-    DEFAULT_GROUPS.map((group) =>
-      setDoc(
-        doc(db, "groups", group.id),
-        {
-          name: group.name,
-          description: group.description,
-          category: group.category,
-          country: group.country,
-          state: group.state,
-          type: "public",
-        },
-        { merge: true },
-      ),
-    ),
-  );
+  await Promise.all(DEFAULT_GROUPS.map(async (group) => {
+    const ref = doc(db, "groups", group.id);
+    if ((await getDoc(ref)).exists()) return;
+    await setDoc(ref, {
+      name: group.name,
+      description: group.description,
+      category: group.category,
+      country: group.country,
+      state: group.state,
+      type: "public",
+      createdBy: "system",
+      admins: [],
+      members: [],
+      memberCount: 0,
+      createdAt: serverTimestamp(),
+    });
+  }));
 }
 
 export function listenGroups(onChange: (items: ConnectGroup[]) => void): Unsubscribe {
@@ -580,12 +642,17 @@ export async function createGroup(
     description: string;
     type: "public" | "private";
     memberIds: string[];
+    category?: string;
   },
 ): Promise<string> {
   const name = input.name.trim();
+  if (!creatorId) throw new Error("Please log in before creating a group.");
   if (!name) throw new Error("Give your group a name.");
+  if (name.length > 100) throw new Error("Group names must be 100 characters or fewer.");
   const memberIds = [...new Set([creatorId, ...input.memberIds.filter(Boolean)])];
-  const ref = await addDoc(collection(db, "groups"), {
+  const ref = doc(collection(db, "groups"));
+  const batch = writeBatch(db);
+  batch.set(ref, {
     name,
     description: input.description.trim(),
     type: input.type,
@@ -593,31 +660,26 @@ export async function createGroup(
     admins: [creatorId],
     members: memberIds,
     memberCount: memberIds.length,
-    category: "Custom",
+    category: input.category?.trim() || "Custom",
     country: DEFAULT_COUNTRY,
     state: "",
     createdAt: serverTimestamp(),
   });
-  await Promise.all(
-    memberIds.map((uid) =>
-      setDoc(doc(db, "groups", ref.id, "members", uid), {
+  memberIds.forEach((uid) => {
+      batch.set(doc(db, "groups", ref.id, "members", uid), {
         joinedAt: serverTimestamp(),
         role: uid === creatorId ? "admin" : "member",
         userId: uid,
         groupId: ref.id,
-      }),
-    ),
-  );
-  await Promise.all(
-    memberIds.map((uid) =>
-      setDoc(doc(db, "groupMembers", `${ref.id}_${uid}`), {
+      });
+      batch.set(doc(db, "groupMembers", `${ref.id}_${uid}`), {
         groupId: ref.id,
         userId: uid,
         joinedAt: serverTimestamp(),
         role: uid === creatorId ? "admin" : "member",
-      }),
-    ),
-  );
+      });
+  });
+  await batch.commit();
   return ref.id;
 }
 
@@ -715,12 +777,14 @@ export async function sendGroupMessage(
 
 export function listenProjects(
   onChange: (items: ProjectRequest[]) => void,
+  onError?: (error: Error) => void,
 ): Unsubscribe {
   return onSnapshot(
     query(collection(db, "projectRequests"), orderBy("createdAt", "desc"), limit(80)),
     (snap) => {
       onChange(snap.docs.map((item) => mapProject(item.id, item.data())));
     },
+    (error) => onError?.(error),
   );
 }
 
@@ -728,19 +792,57 @@ export async function createProjectRequest(
   creatorId: string,
   input: Omit<ProjectRequest, "id" | "creatorId" | "createdAt" | "status">,
 ): Promise<void> {
-  await addDoc(collection(db, "projectRequests"), {
-    creatorId,
+  const user = auth.currentUser;
+  if (!user) {
+    const error = new Error("Please log in to continue.") as Error & { code: string };
+    error.code = "auth/no-current-user";
+    throw error;
+  }
+  if (!creatorId || creatorId !== user.uid) {
+    const error = new Error("The project creator UID does not match the signed-in user.") as Error & { code: string };
+    error.code = "auth/user-mismatch";
+    console.error("[Firebase] Project request authentication check failed", {
+      operation: "verify authenticated project creator",
+      code: error.code,
+      message: error.message,
+      suppliedUid: creatorId,
+      authenticatedUid: user.uid,
+      collectionPath: "projectRequests",
+    });
+    throw error;
+  }
+  if (!input.projectName.trim()) throw new Error("Enter a project name.");
+  if (!input.description.trim()) throw new Error("Enter a project description.");
+  if (!Number.isInteger(input.teamSize) || input.teamSize < 1 || input.teamSize > 100) {
+    throw new Error("Team size must be between 1 and 100.");
+  }
+  const payload = {
+    creatorId: user.uid,
     projectName: input.projectName.trim(),
     description: input.description.trim(),
-    technologies: input.technologies,
-    requiredSkills: input.requiredSkills,
+    technologies: Array.isArray(input.technologies) ? input.technologies.filter((value): value is string => typeof value === "string" && Boolean(value.trim())) : [],
+    requiredSkills: Array.isArray(input.requiredSkills) ? input.requiredSkills.filter((value): value is string => typeof value === "string" && Boolean(value.trim())) : [],
     teamSize: input.teamSize,
     college: input.college.trim(),
     country: input.country.trim() || DEFAULT_COUNTRY,
     state: input.state.trim(),
-    deadline: input.deadline,
+    deadline: input.deadline.trim(),
     status: "open",
     createdAt: serverTimestamp(),
-  });
-}
+  };
 
+  try {
+    await addDoc(collection(db, "projectRequests"), payload);
+  } catch (error) {
+    const firebaseError = error as { code?: unknown; message?: unknown };
+    console.error("[Firebase] Project request create failed", {
+      operation: "create document",
+      collectionPath: "projectRequests",
+      creatorUid: user.uid,
+      code: typeof firebaseError?.code === "string" ? firebaseError.code : "unknown",
+      message: typeof firebaseError?.message === "string" ? firebaseError.message : String(error),
+      error,
+    });
+    throw error;
+  }
+}
