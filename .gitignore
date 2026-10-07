@@ -10,6 +10,10 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+coverage
+.vite
+*.tsbuildinfo
+desktop.ini
 *.local
 
 # Editor directories and files
@@ -27,5 +31,10 @@ dist-ssr
 .env*
 !.env.example
 !.env.*.example
+
+# Local downloads and backup archives are not application source.
+/models/Downloads/
+/public/models/Downloads/
+/*.zip
 
 .vercel
