@@ -219,18 +219,55 @@ export async function ensureUserDocument(
       updatedAt: serverTimestamp(),
     });
   } else {
-    await updateDoc(ref, {
-      email: base.email,
-      phone: base.phone,
-      photoURL: base.photoURL || snap.data().photoURL || "",
+    const existingData = snap.data();
+    const updatePayload: Record<string, unknown> = {
+      email: base.email || existingData?.email || "",
+      phone: base.phone || existingData?.phone || "",
+      photoURL: base.photoURL || existingData?.photoURL || "",
       online: true,
       lastSeen: serverTimestamp(),
       updatedAt: serverTimestamp(),
-    });
+    };
+    if (extras?.name?.trim()) {
+      updatePayload.name = extras.name.trim();
+    } else if (base.name && (!existingData?.name || !String(existingData.name).trim())) {
+      updatePayload.name = base.name;
+    }
+    await updateDoc(ref, updatePayload);
   }
 
   const next = await getDoc(ref);
-  return mapUser(next.id, next.data() ?? {});
+  const nextData = next.data() ?? {};
+  await syncPublicProfile(firebaseUser.uid, nextData);
+  return mapUser(next.id, nextData);
+}
+
+function publicProfileData(data: DocumentData) {
+  return {
+    name: String(data.name ?? ""),
+    photoURL: String(data.photoURL ?? ""),
+    college: String(data.college ?? ""),
+    country: String(data.country ?? DEFAULT_COUNTRY),
+    state: String(data.state ?? ""),
+    city: String(data.city ?? ""),
+    branch: String(data.branch ?? ""),
+    year: String(data.year ?? ""),
+    skills: asStringArray(data.skills),
+    interests: asStringArray(data.interests),
+    bio: String(data.bio ?? ""),
+    goal: String(data.goal ?? ""),
+    helpAreas: asStringArray(data.helpAreas),
+    isSenior: Boolean(data.isSenior),
+    isVerifiedSenior: Boolean(data.isVerifiedSenior),
+    role: String(data.role ?? "student"),
+    online: Boolean(data.online),
+    lastSeen: data.lastSeen ?? serverTimestamp(),
+    createdAt: data.createdAt ?? serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+}
+async function syncPublicProfile(uid: string, data: DocumentData): Promise<void> {
+  await setDoc(doc(db, "publicProfiles", uid), publicProfileData(data), { merge: true });
 }
 
 export async function saveConnectProfile(
@@ -304,12 +341,9 @@ export async function saveConnectProfile(
 
   if (!snap.exists()) {
     try {
-      await setDoc(ref, {
-        ...payload,
-        isVerifiedSenior: false,
-        online: true,
-        createdAt: serverTimestamp(),
-      });
+      const createPayload = { ...payload, isVerifiedSenior: false, online: true, createdAt: serverTimestamp() };
+      await setDoc(ref, createPayload);
+      await syncPublicProfile(uid, createPayload);
     } catch (error) {
       logProfileFirebaseError("create profile", error, uid, ref.path);
       throw error;
@@ -319,6 +353,7 @@ export async function saveConnectProfile(
 
   try {
     await updateDoc(ref, payload);
+    await syncPublicProfile(uid, { ...snap.data(), ...payload });
   } catch (error) {
     logProfileFirebaseError("update profile", error, uid, ref.path);
     throw error;
@@ -342,12 +377,13 @@ export async function setUserPresence(uid: string, online: boolean): Promise<voi
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
   await updateDoc(ref, { online, lastSeen: serverTimestamp() });
+  await setDoc(doc(db, "publicProfiles", uid), { online, lastSeen: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
 }
 
 export function listenUsers(
   onChange: (users: ConnectUser[]) => void,
 ): Unsubscribe {
-  return onSnapshot(collection(db, "users"), (snap) => {
+  return onSnapshot(collection(db, "publicProfiles"), (snap) => {
     onChange(snap.docs.map((item) => mapUser(item.id, item.data())));
   });
 }
@@ -356,7 +392,7 @@ export function listenUser(
   userId: string,
   onChange: (user: ConnectUser | null) => void,
 ): Unsubscribe {
-  return onSnapshot(doc(db, "users", userId), (snap) => {
+  return onSnapshot(doc(db, "publicProfiles", userId), (snap) => {
     onChange(snap.exists() ? mapUser(snap.id, snap.data()) : null);
   });
 }

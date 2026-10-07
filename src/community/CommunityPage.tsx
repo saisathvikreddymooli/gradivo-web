@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
-import { onAuthStateChanged, type User } from "firebase/auth";
 import {
   Brain,
   Check,
@@ -15,7 +14,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { auth } from "../firebase/config";
+import { useAuth } from "../auth/useAuth";
 import ProfileAuth from "../components/ProfileAuth";
 import {
   createGroup,
@@ -86,8 +85,8 @@ function formatDate(millis: number | null): string {
   });
 }
 
-export default function CommunityPage({ colors }: { colors: ThemeColors }) {
-  const [firebaseUser, setFirebaseUser] = useState<User | null>(auth.currentUser);
+export default function CommunityPage({ colors, onOpenProfile }: { colors: ThemeColors; onOpenProfile: () => void }) {
+  const { user: firebaseUser } = useAuth();
   const [groups, setGroups] = useState<ConnectGroup[]>([]);
   const [joined, setJoined] = useState<Set<string>>(new Set());
   const [people, setPeople] = useState<ConnectUser[]>([]);
@@ -105,10 +104,6 @@ export default function CommunityPage({ colors }: { colors: ThemeColors }) {
   const [leaveTarget, setLeaveTarget] = useState<ConnectGroup | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-
-  useEffect(() => {
-    return onAuthStateChanged(auth, (user) => setFirebaseUser(user));
-  }, []);
 
   useEffect(() => {
     if (!firebaseUser) return;
@@ -339,7 +334,7 @@ export default function CommunityPage({ colors }: { colors: ThemeColors }) {
             <h1 style={{ marginTop: 0, fontSize: 32, letterSpacing: "-0.8px", lineHeight: 1.2 }}>
               Log in to join student communities
             </h1>
-            <ProfileAuth colors={colors} studentName="" />
+            <ProfileAuth colors={colors} studentName="" onSignupComplete={onOpenProfile} />
           </div>
         </div>
       </section>

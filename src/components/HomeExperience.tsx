@@ -1,5 +1,6 @@
 import { type FormEvent, type CSSProperties } from "react";
 import { ArrowRight, BookOpen, Compass, Code2, Search, Sparkles, Rocket } from "lucide-react";
+import HomeHeroArtwork from "./HomeHeroArtwork";
 
 type HomePage = "roadmap" | "learn" | "community" | "opportunities";
 
@@ -37,9 +38,8 @@ export default function HomeExperience({
 }: Props) {
   return (
     <div className="home-experience" style={{ color: colors.text }}>
-      <section className="home-hero home-hero-new">
-        <div className="home-hero-glow home-hero-glow-one" aria-hidden="true" />
-        <div className="home-hero-glow home-hero-glow-two" aria-hidden="true" />
+      <section className="home-hero home-hero-new home-hero-hands">
+        <HomeHeroArtwork />
         <div className="home-hero-inner">
           <div className="home-hero-copy">
             <div className="home-eyebrow"><Sparkles size={14} /> Your next step starts here</div>
@@ -59,13 +59,6 @@ export default function HomeExperience({
             </details>
           </div>
 
-          <div className="home-journey-visual" aria-label="Gradivo helps students explore skills, projects, and opportunities">
-            <div className="home-journey-halo" aria-hidden="true" />
-            <div className="home-journey-brand"><img src="/gradivo-logo.png" alt="" draggable={false} /><span>GRADIVO</span></div>
-            <div className="home-concept-cycle" aria-hidden="true">
-              <span>SKILLS</span><span>PROJECTS</span><span>OPPORTUNITIES</span><span>GRADIVO</span>
-            </div>
-          </div>
         </div>
       </section>
 

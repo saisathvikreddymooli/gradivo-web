@@ -79,7 +79,7 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if signedIn();
+      allow read: if isUser(userId);
       allow create: if isUser(userId)
         && request.resource.data.keys().hasAll(['name', 'isVerifiedSenior'])
         && request.resource.data.isVerifiedSenior == false
@@ -93,6 +93,20 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Discovery cards contain only fields intentionally shared with signed-in students.
+    // Contact details remain private in users/{uid}.
+    match /publicProfiles/{userId} {
+      allow read: if signedIn();
+      allow create: if isUser(userId)
+        && request.resource.data.get('isVerifiedSenior', false)
+          == get(/databases/$(database)/documents/users/$(userId)).data.get('isVerifiedSenior', false);
+      allow update: if isUser(userId)
+        && request.resource.data.get('isVerifiedSenior', false)
+          == resource.data.get('isVerifiedSenior', false)
+        && request.resource.data.get('isVerifiedSenior', false)
+          == get(/databases/$(database)/documents/users/$(userId)).data.get('isVerifiedSenior', false);
+      allow delete: if false;
+    }
     match /conversations/{conversationId} {
       allow read: if isConvParticipant();
       allow create: if signedIn()
@@ -117,7 +131,7 @@ service cloud.firestore {
     }
 
     match /groups/{groupId} {
-      allow read: if signedIn();
+      allow read: if isUser(userId);
       allow create: if signedIn()
         && (request.resource.data.createdBy == request.auth.uid
           || (request.resource.data.createdBy == 'system'
@@ -148,7 +162,7 @@ service cloud.firestore {
       allow delete: if false;
 
       match /members/{userId} {
-        allow read: if signedIn();
+        allow read: if isUser(userId);
         allow create: if isUser(userId) || isGroupAdminAfter(groupId);
         allow delete: if isUser(userId) || isGroupAdmin(groupId);
         allow update: if isGroupAdmin(groupId);
@@ -178,7 +192,7 @@ service cloud.firestore {
     }
 
     match /projectRequests/{projectId} {
-      allow read: if signedIn();
+      allow read: if isUser(userId);
       allow create: if signedIn()
         && request.resource.data.creatorId == request.auth.uid
         && request.resource.data.projectName is string

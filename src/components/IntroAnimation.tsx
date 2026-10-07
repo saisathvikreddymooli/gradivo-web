@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 
 /**
  * Plays once when App mounts, then hands control back to the normal website.
- * The text reveal is driven purely by CSS delays from mount (not by React
- * state), so the wordmark can never get stuck invisible.
+ * The wordmark reveal runs on fixed CSS delays from mount (not React state),
+ * so the text can never get stuck invisible. Total runtime ~2.15 seconds.
  */
 export default function IntroAnimation({ onComplete }: { onComplete: () => void }) {
   const [fading, setFading] = useState(false);
-  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const [reducedMotion] = useState(
+    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -15,42 +17,41 @@ export default function IntroAnimation({ onComplete }: { onComplete: () => void 
 
     const fadeTimer = window.setTimeout(
       () => setFading(true),
-      reducedMotion ? 420 : 3500,
+      reducedMotion ? 940 : 1750,
     );
     const finishTimer = window.setTimeout(() => {
       document.body.style.overflow = previousOverflow;
       onComplete();
-    }, reducedMotion ? 700 : 3900);
+    }, reducedMotion ? 1220 : 2150);
 
     return () => {
       window.clearTimeout(fadeTimer);
       window.clearTimeout(finishTimer);
       document.body.style.overflow = previousOverflow;
     };
-  }, [onComplete]);
+  }, [onComplete, reducedMotion]);
 
   return (
     <div
-      className={`gradivo-intro${fading ? " is-fading" : ""}${reducedMotion ? " is-reduced-motion" : ""}`}
+      className={`gradivo-intro${fading ? " is-fading" : ""}`}
       aria-hidden="true"
     >
-      {!reducedMotion && (
-        <div className="gradivo-intro-thoughts">
-          {[
-            ["CONFUSED ABOUT", "0.12s", "0.78s"],
-            ["SKILLS", "0.58s", "0.7s"],
-            ["PROJECTS", "1.02s", "0.76s"],
-            ["HACKATHONS", "1.46s", "0.84s"],
-          ].map(([word, delay, duration]) => (
-            <span key={word} style={{ animationDelay: delay, animationDuration: duration }}>{word}</span>
-          ))}
-        </div>
-      )}
       <div className="gradivo-intro-lockup">
         <span className="gradivo-intro-logo-position">
           <img className="gradivo-intro-logo" src="/gradivo-logo.png" alt="" draggable={false} />
         </span>
-        <span className="gradivo-intro-word">GRADIVO</span>
+        <span className="gradivo-intro-word" aria-label="GRADIVO">
+          {"GRADIVO".split("").map((letter, index) => (
+            <span className="gradivo-intro-letter-mask" key={`${letter}-${index}`}>
+              <span
+                className="gradivo-intro-letter"
+                style={{ animationDelay: `${0.5 + index * 0.065}s` }}
+              >
+                {letter}
+              </span>
+            </span>
+          ))}
+        </span>
       </div>
     </div>
   );

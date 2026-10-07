@@ -1,5 +1,5 @@
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getApp, getApps, initializeApp } from "firebase/app";
+import { browserLocalPersistence, getAuth, initializeAuth, type Auth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -21,7 +21,16 @@ if (missingConfig.length > 0) {
   );
 }
 
-const app = initializeApp(firebaseConfig);
+// Ensure Firebase App is initialized only once
+export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
+// Ensure Firebase Auth is initialized only once with local persistence
+let authInstance: Auth;
+try {
+  authInstance = initializeAuth(app, { persistence: browserLocalPersistence });
+} catch {
+  authInstance = getAuth(app);
+}
+
+export const auth = authInstance;
 export const db = getFirestore(app);

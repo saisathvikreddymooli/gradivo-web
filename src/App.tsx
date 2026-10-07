@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { onAuthStateChanged, updateProfile } from "firebase/auth";
+import { motion, useScroll } from "motion/react";
+import { updateProfile } from "firebase/auth";
 import {
   ArrowRight,
   BookOpen,
@@ -21,6 +22,9 @@ import {
   Zap,
 } from "lucide-react";
 import ProfileAuth from "./components/ProfileAuth";
+import AuthPage from "./auth/AuthPage";
+import type { AuthMode } from "./auth/AuthScreen";
+import { useAuth } from "./auth/useAuth";
 import StudentRoadmap from "./components/StudentRoadmap";
 import ConnectPage from "./connect/ConnectPage";
 import NoticesPage from "./notices/NoticesPage";
@@ -31,7 +35,7 @@ import LearnDiscovery from "./components/LearnDiscovery";
 import HomeExperience from "./components/HomeExperience";
 import ConnectProfileFields from "./connect/ConnectProfileFields";
 import { DEFAULT_COUNTRY } from "./connect/constants";
-import { loadUser, profileFromUser, saveConnectProfile } from "./connect/api";
+import { ensureUserDocument, profileFromUser, saveConnectProfile } from "./connect/api";
 import type { AppStudentProfile } from "./connect/types";
 import { auth } from "./firebase/config";
 import { useTheme, type ThemeMode } from "./theme";
@@ -51,7 +55,9 @@ type Page =
   | "careers"
   | "opportunities"
   | "community"
-  | "connect";
+  | "connect"
+  | "login"
+  | "signup";
 
 const pagePaths: Record<Page, string> = {
   home: "/",
@@ -62,6 +68,8 @@ const pagePaths: Record<Page, string> = {
   opportunities: "/opportunities",
   community: "/community",
   connect: "/connect",
+  login: "/login",
+  signup: "/signup",
 };
 
 function pageFromPath(pathname: string): Page {
@@ -191,6 +199,8 @@ const careers = [
 
 function App() {
   const { theme, setTheme, isDark, colors } = useTheme();
+  const { user, ready: authReady } = useAuth();
+  const { scrollYProgress } = useScroll();
 
 
   const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname));
@@ -295,6 +305,10 @@ function App() {
   }, []);
 
   const openProfile = () => {
+    if (authReady && !user) {
+      navigate("login");
+      return;
+    }
     setEditing(!hasSavedProfile);
     setSaveError("");
     setSaveSuccess(false);
@@ -341,26 +355,26 @@ function App() {
 
   useEffect(() => {
     let active = true;
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setProfileReady(false);
-      setProfileLoadError("");
-      if (!user) {
-        // Logged out: clear any previous user's profile so the next login
-        // starts clean and always loads from Firestore.
-        setProfile(initialProfile);
-        setVerifiedSenior(false);
-        setHasSavedProfile(false);
-        setProfileReady(true);
-        setLearningProgress(loadProgress());
-        return;
-      }
-      void loadAccountProgress(user.uid).then((progress) => {
-        if (active && auth.currentUser?.uid === user.uid) setLearningProgress(progress);
-      });
+    setProfileReady(false);
+    setProfileLoadError("");
+    if (!authReady) return;
+    if (!user) {
       setProfile(initialProfile);
+      setVerifiedSenior(false);
+      setHasSavedProfile(false);
+      setProfileReady(true);
+      setLearningProgress(loadProgress());
+      return;
+    }
+
+    void loadAccountProgress(user.uid).then((progress) => {
+      if (active && auth.currentUser?.uid === user.uid) setLearningProgress(progress);
+    });
+    setProfile(initialProfile);
+    void (async () => {
       let remote = null;
       try {
-        remote = await loadUser(user.uid);
+        remote = await ensureUserDocument(user);
       } catch (err) {
         console.error("Could not load profile:", err);
         if (active) setProfileLoadError("Could not load your saved profile. Check your connection and refresh to try again.");
@@ -379,17 +393,13 @@ function App() {
       setVerifiedSenior(remote.isVerifiedSenior);
       setHasSavedProfile(isCompleteProfile(remote));
       const next = profileFromUser(remote, "");
-      setProfile({
-        ...next,
-        name: next.name || user.displayName || "",
-      });
+      setProfile({ ...next, name: next.name || user.displayName || "" });
       setProfileReady(true);
-    });
+    })();
     return () => {
       active = false;
-      unsubscribe();
     };
-  }, []);
+  }, [authReady, user]);
 
   const persistProfile = async (): Promise<void> => {
     const currentUser = auth.currentUser;
@@ -507,6 +517,8 @@ function App() {
     opportunities: "Opportunities",
     community: "Student Community",
     connect: "Connect. Ask. Learn. Grow.",
+    login: "Log in to Gradivo",
+    signup: "Create your Gradivo account",
   }[page];
 
   const styles = {
@@ -627,7 +639,7 @@ function App() {
   };
 
   const renderNavbar = () => (
-    <nav className="gradivo-nav" style={styles.nav}>
+    <nav className="gradivo-nav" style={page === "home" ? { ...styles.nav, position: "absolute", top: 0, left: 0, width: "100%", boxSizing: "border-box" } : styles.nav}>
       <div className="gradivo-nav-inner" style={styles.navInner}>
         <div style={styles.logo} onClick={() => navigate("home")}>
          <div style={styles.logoMark}>
@@ -1305,6 +1317,13 @@ function App() {
         return renderHome();
       case "profile":
         return renderProfile();
+      case "login":
+      case "signup": {
+        const mode: AuthMode = page;
+        const openAuthMode = (nextMode: AuthMode) => navigate(nextMode);
+        const continueToProfile = () => navigate("profile");
+        return <AuthPage mode={mode} colors={colors} onModeChange={openAuthMode} onSuccess={continueToProfile} onAuthenticated={continueToProfile} />;
+      }
       case "roadmap":
         return renderRoadmap();
       case "learn":
@@ -1314,7 +1333,7 @@ function App() {
       case "opportunities":
         return renderOpportunities();
       case "community":
-        return <CommunityPage colors={colors} />;
+        return <CommunityPage colors={colors} onOpenProfile={openProfile} />;
       case "connect":
         return (
           <ConnectPage
@@ -1334,6 +1353,15 @@ function App() {
 
   return (
     <div className={`gradivo-app${introVisible ? " intro-active" : ""}`} style={styles.app}>
+      <motion.div
+        className="scroll-progress-indicator"
+        aria-hidden="true"
+        style={{ scaleX: scrollYProgress }}
+      />
+      {!authReady && <div className="auth-session-loading" role="status">
+        <span className="auth-session-spinner" aria-hidden="true" />
+        <span>Restoring your Gradivo session…</span>
+      </div>}
       <LiveBackground />
       {renderNavbar()}
 

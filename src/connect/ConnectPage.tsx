@@ -8,7 +8,6 @@ import {
   type FormEvent,
   type SetStateAction,
 } from "react";
-import { onAuthStateChanged, type User } from "firebase/auth";
 import {
   ArrowLeft,
   BadgeCheck,
@@ -19,7 +18,9 @@ import {
   Users,
 } from "lucide-react";
 import { auth } from "../firebase/config";
+import { useAuth } from "../auth/useAuth";
 import ProfileAuth from "../components/ProfileAuth";
+import ConnectGlobe from "./ConnectGlobe";
 import {
   addGroupMembers,
   blockUser,
@@ -179,7 +180,7 @@ function EmptyState({
 }
 
 export default function ConnectPage({ colors, profile, setProfile, onOpenProfile, profileReady, profileLoadError, initialTab = "discover" }: Props) {
-  const [firebaseUser, setFirebaseUser] = useState<User | null>(auth.currentUser);
+  const { user: firebaseUser } = useAuth();
   const [me, setMe] = useState<ConnectUser | null>(null);
   const [people, setPeople] = useState<ConnectUser[]>([]);
   const [blocked, setBlocked] = useState<Set<string>>(new Set());
@@ -251,10 +252,6 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
     onChange();
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
-  }, []);
-
-  useEffect(() => {
-    return onAuthStateChanged(auth, (user) => setFirebaseUser(user));
   }, []);
 
   useEffect(() => {
@@ -844,14 +841,17 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
 
   if (!firebaseUser) {
     return (
-      <section style={{ padding: "70px 0" }}>
-        <div style={{ width: "100%", maxWidth: "none", margin: 0, padding: "0 clamp(20px, 4vw, 60px)", boxSizing: "border-box" }}>
+      <section className="connect-world-page connect-world-page-auth" style={{ padding: "70px 0" }}>
+        <div className="connect-world-content" style={{ width: "100%", maxWidth: "none", margin: 0, padding: "0 clamp(20px, 4vw, 60px)", boxSizing: "border-box" }}>
+          <div className="connect-globe-wrap-center">
+            <ConnectGlobe />
+          </div>
           <div style={{ ...card, maxWidth: 520, margin: "0 auto", padding: 28 }}>
             <div style={{ color: colors.purple2, fontWeight: 700, marginBottom: 8 }}>Connect</div>
             <h1 style={{ marginTop: 0, fontSize: 32, letterSpacing: "-0.8px", lineHeight: 1.2 }}>
               Log in to meet students across India
             </h1>
-            <ProfileAuth colors={colors} studentName={profile.name} />
+            <ProfileAuth colors={colors} studentName={profile.name} onSignupComplete={onOpenProfile} />
           </div>
         </div>
       </section>
@@ -859,9 +859,10 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
   }
 
   return (
-    <section style={{ padding: "70px 0 40px", overflowX: "hidden" }}>
-      <div style={{ width: "100%", maxWidth: "none", margin: 0, padding: "0 clamp(20px, 4vw, 60px)", boxSizing: "border-box" }}>
+    <section className="connect-world-page" style={{ padding: "70px 0 40px", overflowX: "hidden" }}>
+      <div className="connect-world-content" style={{ width: "100%", maxWidth: "none", margin: 0, padding: "0 clamp(20px, 4vw, 60px)", boxSizing: "border-box" }}>
         <div
+          className="connect-world-hero"
           style={{
             position: "relative",
             overflow: "hidden",
@@ -885,6 +886,7 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
               borderRadius: "50%",
             }}
           />
+          <div className="connect-hero-grid">
           <div style={{ position: "relative" }}>
             <div
               style={{
@@ -914,6 +916,8 @@ export default function ConnectPage({ colors, profile, setProfile, onOpenProfile
               Meet students and seniors from across India, get guidance, find teammates, and grow
               together.
             </p>
+          </div>
+          <ConnectGlobe />
           </div>
         </div>
 
