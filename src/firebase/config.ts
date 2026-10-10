@@ -1,5 +1,5 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
-import { browserLocalPersistence, getAuth, initializeAuth, type Auth } from "firebase/auth";
+import { browserLocalPersistence, browserPopupRedirectResolver, getAuth, initializeAuth, type Auth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -27,10 +27,14 @@ export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfi
 // Ensure Firebase Auth is initialized only once with local persistence
 let authInstance: Auth;
 try {
-  authInstance = initializeAuth(app, { persistence: browserLocalPersistence });
+  authInstance = initializeAuth(app, {
+    persistence: browserLocalPersistence,
+    popupRedirectResolver: browserPopupRedirectResolver,
+  });
 } catch {
   authInstance = getAuth(app);
 }
 
 export const auth = authInstance;
-export const db = getFirestore(app);
+export const FIRESTORE_DATABASE_ID = "(default)";
+export const db = getFirestore(app, FIRESTORE_DATABASE_ID);

@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/gradivo-favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
     <title>Gradivo — Find Your Path</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,17 +13,12 @@
       rel="stylesheet"
     />
     <script>
-      // Apply the saved theme before first paint to avoid a flash.
+      // Force the permanent dark appearance before first paint.
       try {
-        var stored = window.localStorage.getItem("gradivo-theme") || "system";
-        var dark =
-          stored === "dark" ||
-          (stored !== "light" &&
-            window.matchMedia("(prefers-color-scheme: dark)").matches);
-        document.documentElement.dataset.theme = dark ? "dark" : "light";
+        window.localStorage.setItem("gradivo-theme", "dark");
       } catch (e) {
-        document.documentElement.dataset.theme = "dark";
       }
+      document.documentElement.dataset.theme = "dark";
     </script>
   </head>
   <body>

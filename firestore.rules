@@ -9,6 +9,64 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
+    function stringField(data, field) {
+      return !(field in data) || data[field] is string;
+    }
+
+    function listField(data, field) {
+      return !(field in data) || data[field] is list;
+    }
+
+    function timestampField(data, field) {
+      return !(field in data) || data[field] is timestamp;
+    }
+
+    function validUserDocument(data) {
+      return data.keys().hasOnly([
+          'name', 'email', 'phone', 'photoURL', 'college', 'country', 'state', 'city',
+          'branch', 'year', 'skills', 'interests', 'bio', 'goal', 'skillLevel',
+          'weeklyHours', 'timelineMonths', 'helpAreas', 'isSenior', 'isVerifiedSenior',
+          'role', 'online', 'lastSeen', 'createdAt', 'updatedAt', 'providers',
+          'lastLoginAt', 'learningProgress'
+        ])
+        && stringField(data, 'name') && stringField(data, 'email')
+        && stringField(data, 'phone') && stringField(data, 'photoURL')
+        && stringField(data, 'college') && stringField(data, 'country')
+        && stringField(data, 'state') && stringField(data, 'city')
+        && stringField(data, 'branch') && stringField(data, 'year')
+        && stringField(data, 'bio') && stringField(data, 'goal')
+        && stringField(data, 'skillLevel') && stringField(data, 'weeklyHours')
+        && stringField(data, 'timelineMonths') && stringField(data, 'role')
+        && listField(data, 'skills') && listField(data, 'interests')
+        && listField(data, 'helpAreas') && listField(data, 'providers')
+        && timestampField(data, 'lastSeen') && timestampField(data, 'createdAt')
+        && timestampField(data, 'updatedAt') && timestampField(data, 'lastLoginAt')
+        && (!('isSenior' in data) || data.isSenior is bool)
+        && (!('isVerifiedSenior' in data) || data.isVerifiedSenior is bool)
+        && (!('online' in data) || data.online is bool)
+        && (!('learningProgress' in data) || data.learningProgress is map);
+    }
+
+    function validPublicProfile(data) {
+      return data.keys().hasOnly([
+          'name', 'photoURL', 'college', 'country', 'state', 'city', 'branch', 'year',
+          'skills', 'interests', 'bio', 'goal', 'helpAreas', 'isSenior',
+          'isVerifiedSenior', 'role', 'online', 'lastSeen', 'createdAt', 'updatedAt'
+        ])
+        && stringField(data, 'name') && stringField(data, 'photoURL')
+        && stringField(data, 'college') && stringField(data, 'country')
+        && stringField(data, 'state') && stringField(data, 'city')
+        && stringField(data, 'branch') && stringField(data, 'year')
+        && stringField(data, 'bio') && stringField(data, 'goal')
+        && stringField(data, 'role') && listField(data, 'skills')
+        && listField(data, 'interests') && listField(data, 'helpAreas')
+        && timestampField(data, 'lastSeen') && timestampField(data, 'createdAt')
+        && timestampField(data, 'updatedAt')
+        && (!('isSenior' in data) || data.isSenior is bool)
+        && (!('isVerifiedSenior' in data) || data.isVerifiedSenior is bool)
+        && (!('online' in data) || data.online is bool);
+    }
+
     function authPhone() {
       return signedIn() && 'phone_number' in request.auth.token
         ? request.auth.token.phone_number
@@ -24,23 +82,23 @@ service cloud.firestore {
         || request.resource.data.phone == authPhone();
     }
 
-    function conv() {
+    function conv(conversationId) {
       return get(/databases/$(database)/documents/conversations/$(conversationId)).data;
     }
 
-    function isConvParticipant() {
-      return signedIn() && request.auth.uid in conv().participants;
+    function isConvParticipant(conversationId) {
+      return signedIn() && request.auth.uid in conv(conversationId).participants;
     }
 
-    function otherUid() {
-      return conv().participants[0] == request.auth.uid
-        ? conv().participants[1]
-        : conv().participants[0];
+    function otherUid(conversationId) {
+      return conv(conversationId).participants[0] == request.auth.uid
+        ? conv(conversationId).participants[1]
+        : conv(conversationId).participants[0];
     }
 
-    function pairBlocked() {
-      return exists(/databases/$(database)/documents/blocks/$(request.auth.uid + '_' + otherUid()))
-        || exists(/databases/$(database)/documents/blocks/$(otherUid() + '_' + request.auth.uid));
+    function pairBlocked(conversationId) {
+      return exists(/databases/$(database)/documents/blocks/$(request.auth.uid + '_' + otherUid(conversationId)))
+        || exists(/databases/$(database)/documents/blocks/$(otherUid(conversationId) + '_' + request.auth.uid));
     }
 
     function isGroupMember(groupId) {
@@ -78,19 +136,102 @@ service cloud.firestore {
           || request.auth.uid == data.get('createdBy', ''));
     }
 
+    function isPublicMemberAfter(groupId, userId) {
+      let data = getAfter(/databases/$(database)/documents/groups/$(groupId)).data;
+      return signedIn() && request.auth.uid == userId
+        && data.get('type', 'public') == 'public'
+        && userId in data.get('members', []);
+    }
+
+    // Private student profiles. Only the owner can read or delete their own
+    // document. Writes are owner-only and can never grant verification:
+    // isVerifiedSenior must be false on create and can never be changed by
+    // the client. Phone numbers must be empty or match the verified number
+    // on the Firebase Auth account.
     match /users/{userId} {
       allow read: if isUser(userId);
       allow create: if isUser(userId)
         && request.resource.data.keys().hasAll(['name', 'isVerifiedSenior'])
+        && validUserDocument(request.resource.data)
         && request.resource.data.isVerifiedSenior == false
+        && (!('role' in request.resource.data) || request.resource.data.role == 'student')
         && validProfilePhone();
       allow update: if isUser(userId)
+        && validUserDocument(request.resource.data)
         // Older profiles may not have this field yet. Treat an absent value
         // as false while still preventing clients from changing verification.
         && request.resource.data.get('isVerifiedSenior', false)
           == resource.data.get('isVerifiedSenior', false)
-        && validProfilePhone();
-      allow delete: if false;
+        && request.resource.data.get('role', resource.data.get('role', 'student'))
+          == resource.data.get('role', 'student')
+        && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null)
+        // Legacy phone values may be retained while unrelated fields are
+        // saved. A changed phone must still match Firebase Auth verification.
+        && (request.resource.data.get('phone', '') == resource.data.get('phone', '')
+          || validProfilePhone());
+      allow delete: if isUser(userId);
+
+      // Persisted roadmap snapshots (users/{uid}/roadmaps/current). The
+      // generator is deterministic, so the roadmap is rebuilt from the
+      // stored intake on load. Owner-only, like the profile itself.
+      match /roadmaps/{roadmapId} {
+        allow read: if isUser(userId) && roadmapId == 'current';
+        allow create, update: if isUser(userId)
+          && roadmapId == 'current'
+          && request.resource.data.keys().hasOnly(['intake', 'generatedAt', 'sourceVersion', 'updatedAt'])
+          && request.resource.data.intake is map
+          && request.resource.data.generatedAt is number
+          && request.resource.data.sourceVersion is string
+          && request.resource.data.updatedAt is timestamp;
+        allow delete: if isUser(userId) && roadmapId == 'current';
+      }
+      // Learning checklist progress (users/{uid}/learn/progress).
+      match /learn/{progressId} {
+        allow read: if isUser(userId) && progressId == 'progress';
+        allow create, update: if isUser(userId)
+          && progressId == 'progress'
+          && request.resource.data.keys().hasOnly(['done'])
+          && request.resource.data.done is list
+          && request.resource.data.done.size() <= 100;
+        allow delete: if isUser(userId) && progressId == 'progress';
+      }
+      // Per-video watch progress (users/{uid}/videoProgress/{videoId}).
+      // Owner-only; documents are keyed by the video id they describe.
+      match /videoProgress/{videoId} {
+        allow read: if isUser(userId);
+        allow create, update: if isUser(userId)
+          && request.resource.data.videoId == videoId
+          && request.resource.data.language is string
+          && request.resource.data.spokenLanguage is string
+          && request.resource.data.title is string
+          && request.resource.data.percent is number
+          && request.resource.data.percent >= 0
+          && request.resource.data.percent <= 100
+          && request.resource.data.lastPosition is number
+          && request.resource.data.lastPosition >= 0
+          && request.resource.data.duration is number
+          && request.resource.data.duration > 0
+          && request.resource.data.completed is bool
+          && request.resource.data.updatedAt is timestamp;
+        allow delete: if isUser(userId);
+      }
+      // Append-only Learn activity events, readable and creatable by their owner.
+      match /learnActivity/{activityId} {
+        allow read: if isUser(userId);
+        allow create: if isUser(userId)
+          && request.resource.data.occurredAt is timestamp
+          && ((request.resource.data.type == 'video_opened'
+              && request.resource.data.keys().hasOnly(['type', 'occurredAt', 'language', 'spoken', 'videoId'])
+              && request.resource.data.language in ['c', 'cpp', 'java', 'python', 'javascript', 'web', 'sql', 'dsa', 'css', 'html']
+              && request.resource.data.spoken in ['en', 'hi', 'te', 'kn']
+              && request.resource.data.videoId is string
+              && request.resource.data.videoId.size() == 11)
+            || (request.resource.data.type == 'checklist_updated'
+              && request.resource.data.keys().hasOnly(['type', 'occurredAt', 'checklistId', 'completed'])
+              && request.resource.data.checklistId in ['two-projects', 'portfolio-live', 'github-active', 'resume-ready', 'interviews-practised', 'one-ai-tool', 'explain-work']
+              && request.resource.data.completed is bool));
+        allow update, delete: if false;
+      }
     }
 
     // Discovery cards contain only fields intentionally shared with signed-in students.
@@ -98,47 +239,97 @@ service cloud.firestore {
     match /publicProfiles/{userId} {
       allow read: if signedIn();
       allow create: if isUser(userId)
+        && validPublicProfile(request.resource.data)
         && request.resource.data.get('isVerifiedSenior', false)
-          == get(/databases/$(database)/documents/users/$(userId)).data.get('isVerifiedSenior', false);
+          == get(/databases/$(database)/documents/users/$(userId)).data.get('isVerifiedSenior', false)
+        && request.resource.data.get('role', 'student')
+          == get(/databases/$(database)/documents/users/$(userId)).data.get('role', 'student');
       allow update: if isUser(userId)
+        && validPublicProfile(request.resource.data)
         && request.resource.data.get('isVerifiedSenior', false)
-          == resource.data.get('isVerifiedSenior', false)
-        && request.resource.data.get('isVerifiedSenior', false)
-          == get(/databases/$(database)/documents/users/$(userId)).data.get('isVerifiedSenior', false);
-      allow delete: if false;
+          == get(/databases/$(database)/documents/users/$(userId)).data.get('isVerifiedSenior', false)
+        && request.resource.data.get('role', 'student')
+          == get(/databases/$(database)/documents/users/$(userId)).data.get('role', 'student');
+      allow delete: if isUser(userId);
     }
+    function validConversation(data, conversationId) {
+      return data.keys().hasOnly([
+          'participants', 'userLow', 'userHigh', 'lastMessage', 'lastMessageAt',
+          'createdAt', 'hiddenFor', 'unread'
+        ])
+        && data.participants is list && data.participants.size() == 2
+        && data.userLow is string && data.userHigh is string
+        && data.participants.hasOnly([data.userLow, data.userHigh])
+        && data.participants.hasAll([data.userLow, data.userHigh])
+        && conversationId == data.userLow + '_' + data.userHigh
+        && data.lastMessage is string
+        && data.lastMessageAt is timestamp && data.createdAt is timestamp
+        && data.hiddenFor is list && data.hiddenFor.hasOnly(data.participants)
+        && data.unread is map;
+    }
+
     match /conversations/{conversationId} {
-      allow read: if isConvParticipant();
+      // A missing document is readable (returns not-found) so a client can
+      // check for an existing conversation before creating one. Existing
+      // conversations stay visible to participants only.
+      allow read: if !exists(/databases/$(database)/documents/conversations/$(conversationId))
+        || isConvParticipant(conversationId);
       allow create: if signedIn()
+        && validConversation(request.resource.data, conversationId)
         && request.auth.uid in request.resource.data.participants
-        && request.resource.data.participants.size() == 2;
-      allow update: if isConvParticipant();
+        && request.resource.data.hiddenFor.size() == 0;
+      allow update: if isConvParticipant(conversationId)
+        && validConversation(request.resource.data, conversationId)
+        && request.resource.data.participants == resource.data.participants
+        && request.resource.data.userLow == resource.data.userLow
+        && request.resource.data.userHigh == resource.data.userHigh
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lastMessage', 'lastMessageAt', 'hiddenFor', 'unread'
+        ]);
       allow delete: if false;
 
       match /messages/{messageId} {
-        allow read: if isConvParticipant();
-        allow create: if isConvParticipant()
+        allow read: if isConvParticipant(conversationId);
+        allow create: if isConvParticipant(conversationId)
+          && request.resource.data.keys().hasOnly(['senderId', 'text', 'createdAt', 'readBy'])
           && request.resource.data.senderId == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() < 4000
-          && !pairBlocked();
-        allow update: if isConvParticipant()
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.readBy == [request.auth.uid]
+          && !pairBlocked(conversationId);
+        allow update: if isConvParticipant(conversationId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy'])
           && request.resource.data.senderId == resource.data.senderId
-          && request.resource.data.text == resource.data.text;
+          && request.resource.data.text == resource.data.text
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.readBy is list
+          && request.resource.data.readBy.hasAll(resource.data.readBy)
+          && request.resource.data.readBy.hasOnly(conv(conversationId).participants)
+          && request.resource.data.readBy.size() <= 2;
         allow delete: if false;
       }
     }
 
     match /groups/{groupId} {
-      allow read: if isUser(userId);
+      allow read: if signedIn();
       allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'name', 'description', 'category', 'country', 'state', 'type', 'createdBy',
+          'admins', 'members', 'memberCount', 'createdAt'
+        ])
         && (request.resource.data.createdBy == request.auth.uid
           || (request.resource.data.createdBy == 'system'
             && (groupId in ['india-students', 'first-year', 'cybersecurity', 'ai-ml', 'machine-learning', 'web-dev', 'cloud', 'programming', 'hackathons', 'project-partners', 'internships', 'startups', 'cse', 'ise', 'ece']
               || groupId.matches('state-[a-z0-9-]+'))))
         && request.resource.data.admins is list
         && request.resource.data.members is list
+        && request.resource.data.memberCount is int
+        && request.resource.data.memberCount == request.resource.data.members.size()
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.admins.hasOnly(request.resource.data.members)
         && (request.resource.data.createdBy == 'system'
           || (request.auth.uid in request.resource.data.admins
             && request.auth.uid in request.resource.data.members))
@@ -149,73 +340,167 @@ service cloud.firestore {
       allow update: if signedIn() && (
         (isGroupAdmin(groupId)
           && request.resource.data.get('createdBy', resource.data.get('createdBy', ''))
-            == resource.data.get('createdBy', ''))
+            == resource.data.get('createdBy', '')
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'description', 'category', 'country', 'state', 'type',
+            'admins', 'members', 'memberCount'
+          ])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 100
+          && request.resource.data.description is string
+          && request.resource.data.description.size() <= 2000
+          && request.resource.data.type in ['public', 'private']
+          && request.resource.data.admins is list
+          && request.resource.data.members is list
+          && request.resource.data.memberCount == request.resource.data.members.size()
+          && request.resource.data.admins.hasOnly(request.resource.data.members))
+        || (signedIn()
+          && groupType(groupId) == 'public'
+          && !(request.auth.uid in resource.data.get('members', []))
+          && request.auth.uid in request.resource.data.get('members', [])
+          && request.resource.data.get('members', []).hasAll(resource.data.get('members', []))
+          && request.resource.data.get('members', []).size() == resource.data.get('members', []).size() + 1
+          && request.resource.data.get('memberCount', 0) == resource.data.get('memberCount', 0) + 1
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberCount']))
         || (isGroupMemberAny(groupId)
+          && request.auth.uid in resource.data.get('members', [])
+          && !(request.auth.uid in request.resource.data.get('members', []))
+          && resource.data.get('members', []).hasAll(request.resource.data.get('members', []))
+          && request.resource.data.get('members', []).size() == resource.data.get('members', []).size() - 1
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberCount'])
-          && ((request.auth.uid in resource.data.get('members', [])
-              && !(request.auth.uid in request.resource.data.get('members', []))
-              && request.resource.data.get('memberCount', 0) == resource.data.get('memberCount', 0) - 1)
-            || (!(request.auth.uid in resource.data.get('members', []))
-              && request.auth.uid in request.resource.data.get('members', [])
-              && request.resource.data.get('memberCount', 0) == resource.data.get('memberCount', 0) + 1)))
+          && request.resource.data.get('memberCount', 0) == resource.data.get('memberCount', 0) - 1)
       );
       allow delete: if false;
 
       match /members/{userId} {
-        allow read: if isUser(userId);
-        allow create: if isUser(userId) || isGroupAdminAfter(groupId);
+        allow read: if signedIn() && (groupType(groupId) == 'public' || isGroupMemberAny(groupId));
+        allow create: if request.resource.data.keys().hasOnly(['joinedAt', 'role', 'userId', 'groupId'])
+          && request.resource.data.joinedAt is timestamp
+          && request.resource.data.role in ['admin', 'member']
+          && request.resource.data.userId == userId
+          && request.resource.data.groupId == groupId
+          && (isGroupAdminAfter(groupId)
+            || (isUser(userId) && groupType(groupId) == 'public'
+              && isPublicMemberAfter(groupId, userId)));
         allow delete: if isUser(userId) || isGroupAdmin(groupId);
-        allow update: if isGroupAdmin(groupId);
+        allow update: if isGroupAdmin(groupId)
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.groupId == resource.data.groupId
+          && request.resource.data.joinedAt == resource.data.joinedAt
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
+          && request.resource.data.role in ['admin', 'member'];
       }
 
       match /messages/{messageId} {
         allow read: if signedIn()
           && (groupType(groupId) == 'public' || isGroupMemberAny(groupId));
         allow create: if isGroupMemberAny(groupId)
+          && request.resource.data.keys().hasOnly(['senderId', 'text', 'createdAt', 'readBy'])
           && request.resource.data.senderId == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() < 4000;
+          && request.resource.data.text.size() < 4000
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.readBy == [request.auth.uid];
         allow update, delete: if false;
       }
     }
 
     match /groupMembers/{memberId} {
       allow read: if signedIn() && resource.data.userId == request.auth.uid;
-      allow create: if signedIn()
-        && (request.resource.data.userId == request.auth.uid
-          || isGroupAdminAfter(request.resource.data.groupId));
+      allow create: if request.resource.data.keys().hasOnly(['groupId', 'userId', 'joinedAt', 'role'])
+        && request.resource.data.groupId is string
+        && request.resource.data.userId is string
+        && request.resource.data.joinedAt is timestamp
+        && request.resource.data.role in ['admin', 'member']
+        && memberId == request.resource.data.groupId + '_' + request.resource.data.userId
+        && (isGroupAdminAfter(request.resource.data.groupId)
+          || isPublicMemberAfter(request.resource.data.groupId, request.resource.data.userId));
       allow delete: if signedIn()
         && (resource.data.userId == request.auth.uid
           || isGroupAdmin(resource.data.groupId));
-      allow update: if false;
+      allow update: if isGroupAdmin(resource.data.groupId)
+        && request.resource.data.groupId == resource.data.groupId
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.joinedAt == resource.data.joinedAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
+        && request.resource.data.role in ['admin', 'member'];
+    }
+
+    function validProjectRequest(data) {
+      return data.keys().hasOnly([
+          'creatorId', 'projectName', 'description', 'technologies', 'requiredSkills',
+          'teamSize', 'college', 'country', 'state', 'deadline', 'status', 'createdAt'
+        ])
+        && data.creatorId is string && data.creatorId.size() > 0
+        && data.projectName is string && data.projectName.size() > 0 && data.projectName.size() <= 120
+        && data.description is string && data.description.size() > 0 && data.description.size() <= 10000
+        && data.technologies is list && data.technologies.size() <= 50
+        && data.requiredSkills is list && data.requiredSkills.size() <= 50
+        && data.teamSize is int && data.teamSize >= 1 && data.teamSize <= 100
+        && data.college is string && data.college.size() <= 200
+        && data.country is string && data.country.size() <= 100
+        && data.state is string && data.state.size() <= 100
+        && data.deadline is string && data.deadline.size() <= 100
+        && data.status in ['open', 'closed', 'filled']
+        && data.createdAt is timestamp;
     }
 
     match /projectRequests/{projectId} {
-      allow read: if isUser(userId);
+      // Open requests are shared with signed-in students for project discovery.
+      // Closed/filled requests are private to their creator. There is no
+      // requester/participant field in the current app schema.
+      allow get: if signedIn()
+        && (resource.data.creatorId == request.auth.uid || resource.data.status == 'open');
+      allow list: if signedIn() && resource.data.status == 'open';
       allow create: if signedIn()
         && request.resource.data.creatorId == request.auth.uid
-        && request.resource.data.projectName is string
-        && request.resource.data.projectName.size() > 0
-        && request.resource.data.projectName.size() <= 120
-        && request.resource.data.description is string
-        && request.resource.data.description.size() > 0
-        && request.resource.data.technologies is list
-        && request.resource.data.requiredSkills is list
-        && (request.resource.data.teamSize is int
-          || request.resource.data.teamSize is float)
-        && request.resource.data.createdAt is timestamp
-        && request.resource.data.teamSize >= 1
-        && request.resource.data.teamSize <= 100
-        && request.resource.data.college is string
-        && request.resource.data.country is string
-        && request.resource.data.state is string
-        && request.resource.data.deadline is string
+        && request.resource.data.keys().hasAll([
+          'creatorId', 'projectName', 'description', 'technologies', 'requiredSkills',
+          'teamSize', 'college', 'country', 'state', 'deadline', 'status', 'createdAt'
+        ])
+        && validProjectRequest(request.resource.data)
         && request.resource.data.status == 'open';
       allow update: if signedIn()
         && resource.data.creatorId == request.auth.uid
-        && request.resource.data.creatorId == resource.data.creatorId;
+        && request.resource.data.creatorId == resource.data.creatorId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'projectName', 'description', 'technologies', 'requiredSkills', 'teamSize',
+          'college', 'country', 'state', 'deadline', 'status'
+        ])
+        && validProjectRequest(request.resource.data);
       allow delete: if signedIn() && resource.data.creatorId == request.auth.uid;
+    }
+
+    // A connection is visible only to its sender and recipient. Requests are
+    // created by the sender and can be accepted or declined only by recipient.
+    match /connectionRequests/{requestId} {
+      allow read: if signedIn()
+        && (resource.data.senderId == request.auth.uid
+          || resource.data.recipientId == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['senderId', 'recipientId', 'status', 'createdAt', 'updatedAt'])
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.recipientId is string
+        && request.resource.data.recipientId.size() > 0
+        && request.resource.data.recipientId != request.auth.uid
+        && requestId == request.auth.uid + '__' + request.resource.data.recipientId
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+      allow update: if signedIn()
+        && resource.data.recipientId == request.auth.uid
+        && resource.data.status == 'pending'
+        && request.resource.data.senderId == resource.data.senderId
+        && request.resource.data.recipientId == resource.data.recipientId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        && request.resource.data.status in ['accepted', 'declined']
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if signedIn()
+        && (resource.data.senderId == request.auth.uid
+          || resource.data.recipientId == request.auth.uid);
     }
 
     // Curated real-world opportunities (internships, hackathons).
@@ -236,9 +521,13 @@ service cloud.firestore {
     }
 
     match /blocks/{blockId} {
-      allow read: if signedIn()
-        && (resource.data.blockedBy == request.auth.uid
-          || resource.data.blockedUser == request.auth.uid);
+      // A missing document is readable (returns not-found) so block checks
+      // work for users who never blocked each other. Existing records stay
+      // visible to the two parties only.
+      allow read: if resource == null
+        || (signedIn()
+          && (resource.data.blockedBy == request.auth.uid
+            || resource.data.blockedUser == request.auth.uid));
       allow create: if signedIn()
         && request.resource.data.blockedBy == request.auth.uid
         && request.resource.data.blockedUser is string
@@ -246,6 +535,11 @@ service cloud.firestore {
         && blockId == request.auth.uid + '_' + request.resource.data.blockedUser;
       allow delete: if signedIn() && resource.data.blockedBy == request.auth.uid;
       allow update: if false;
+    }
+
+    // Default deny: everything not listed above is inaccessible.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

@@ -88,7 +88,7 @@ export async function askGradivoAI(
     } catch {
       return {
         source: "local-fallback",
-        answer: `${localAnswer(question, intake, roadmap)}\n\n(The AI service is not available, so this is Gradivo’s built-in guidance.)`,
+        answer: `${localAnswer(question, intake, roadmap)}\n\n(The AI service is not available, so this is Gradivo's built-in guidance.)`,
       };
     }
   }

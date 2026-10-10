@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BRAND_NAME_UPPER } from "../config/brand";
 
 /**
  * Plays once when App mounts, then hands control back to the normal website.
@@ -40,8 +41,8 @@ export default function IntroAnimation({ onComplete }: { onComplete: () => void 
         <span className="gradivo-intro-logo-position">
           <img className="gradivo-intro-logo" src="/gradivo-logo.png" alt="" draggable={false} />
         </span>
-        <span className="gradivo-intro-word" aria-label="GRADIVO">
-          {"GRADIVO".split("").map((letter, index) => (
+        <span className="gradivo-intro-word" aria-label={BRAND_NAME_UPPER}>
+          {BRAND_NAME_UPPER.split("").map((letter, index) => (
             <span className="gradivo-intro-letter-mask" key={`${letter}-${index}`}>
               <span
                 className="gradivo-intro-letter"

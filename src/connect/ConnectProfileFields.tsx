@@ -164,13 +164,104 @@ export default function ConnectProfileFields({
         </label>
       </div>
 
+      <div>
+        <div style={{ ...fieldLabel, color: colors.text }}>Roadmap inputs</div>
+        <div style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
+          Used to generate your personalised roadmap. Saved in the same profile.
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+            gap: 16,
+            marginTop: 12,
+          }}
+        >
+          <label style={fieldLabel}>
+            Target role / goal
+            <input
+              value={profile.goal}
+              onChange={(e) => setProfile({ ...profile, goal: e.target.value })}
+              placeholder="Example: Frontend Developer"
+              list="gradivo-target-roles"
+              style={inputStyle}
+            />
+            <datalist id="gradivo-target-roles">
+              {[
+                "Frontend Developer",
+                "Backend Developer",
+                "Full-stack Developer",
+                "Data Analyst",
+                "Data Engineer",
+                "AI/ML Engineer",
+                "Mobile Developer",
+                "DevOps Engineer",
+                "UI/UX Designer",
+                "Cybersecurity Analyst",
+                "Cloud Engineer",
+              ].map((item) => (
+                <option key={item} value={item} />
+              ))}
+            </datalist>
+          </label>
+          <label style={fieldLabel}>
+            Experience level
+            <select
+              value={profile.skillLevel}
+              onChange={(e) =>
+                setProfile({
+                  ...profile,
+                  skillLevel: e.target.value as AppStudentProfile["skillLevel"],
+                })
+              }
+              style={inputStyle}
+            >
+              <option value="beginner">Beginner</option>
+              <option value="intermediate">Intermediate</option>
+              <option value="advanced">Advanced</option>
+            </select>
+          </label>
+          <label style={fieldLabel}>
+            Hours available per week
+            <select
+              value={profile.weeklyHours}
+              onChange={(e) => setProfile({ ...profile, weeklyHours: e.target.value })}
+              style={inputStyle}
+            >
+              <option value="3">About 3</option>
+              <option value="5">About 5</option>
+              <option value="7">About 7</option>
+              <option value="10">About 10</option>
+              <option value="15">About 15</option>
+              <option value="20">20+</option>
+            </select>
+          </label>
+          <label style={fieldLabel}>
+            Target timeline
+            <select
+              value={profile.timelineMonths}
+              onChange={(e) => setProfile({ ...profile, timelineMonths: e.target.value })}
+              style={inputStyle}
+            >
+              <option value="3">3 months</option>
+              <option value="6">6 months</option>
+              <option value="12">12 months</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
       <label style={fieldLabel}>
-        Short bio
+        <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <span>Short bio</span>
+          <span style={{ color: colors.muted, fontWeight: 500 }}>{profile.bio.length}/280</span>
+        </span>
         <textarea
           value={profile.bio}
           onChange={(e) => setProfile({ ...profile, bio: e.target.value.slice(0, 280) })}
           placeholder="What are you learning, building, or looking for?"
           rows={3}
+          maxLength={280}
           style={{ ...inputStyle, resize: "vertical", minHeight: 84 }}
         />
       </label>

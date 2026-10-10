@@ -208,6 +208,50 @@
   cursor: not-allowed;
 }
 
+.gradivo-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 14px;
+  color: #71717a;
+  font-size: 12px;
+}
+
+.gradivo-auth-divider::before,
+.gradivo-auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.gradivo-auth-social-btn {
+  height: 46px;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #f5f3ff;
+  font-size: 14px;
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.gradivo-auth-social-btn:hover:not(:disabled) {
+  border-color: rgba(129, 140, 248, 0.55);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.gradivo-auth-social-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .gradivo-auth-forgot-row {
   display: flex;
   justify-content: flex-end;

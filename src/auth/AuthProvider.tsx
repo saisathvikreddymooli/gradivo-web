@@ -12,6 +12,7 @@ import { auth } from "../firebase/config";
 import { ensureUserDocument } from "../connect/api";
 import { AuthContext, type AuthContextValue } from "./context";
 import { logAuthError } from "./authError";
+import { consumeRedirectResult, signInWithGoogle, signInWithLinkedIn } from "./socialAuth";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -19,6 +20,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+
+    // Complete a redirect-based social sign-in (Google/LinkedIn fallback).
+    consumeRedirectResult()
+      .then((redirectUser) => {
+        if (active && redirectUser) setUser(redirectUser);
+      })
+      .catch(() => {
+        // Error already logged in socialAuth; surfaced on next explicit attempt.
+      });
 
     // Single onAuthStateChanged listener to track authenticated session
     const unsubscribe = onAuthStateChanged(
@@ -81,6 +91,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const credential = await signInWithEmailAndPassword(auth, trimmedEmail, password);
       setUser(credential.user);
       return credential.user;
+    },
+
+    async signInWithGoogle(): Promise<User | null> {
+      const user = await signInWithGoogle();
+      if (user) setUser(user);
+      return user;
+    },
+
+    async signInWithLinkedIn(): Promise<User | null> {
+      const user = await signInWithLinkedIn();
+      if (user) setUser(user);
+      return user;
     },
 
     async sendPasswordReset(email: string): Promise<void> {

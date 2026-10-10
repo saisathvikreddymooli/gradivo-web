@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion, useScroll } from "motion/react";
 import { updateProfile } from "firebase/auth";
 import {
@@ -9,23 +9,20 @@ import {
   Code2,
   Compass,
   Menu,
-  Monitor,
-  Moon,
-  Rocket,
   Search,
   Shield,
   Sparkles,
-  Sun,
-  Target,
   User,
   X,
   Zap,
 } from "lucide-react";
 import ProfileAuth from "./components/ProfileAuth";
 import AuthPage from "./auth/AuthPage";
+import ProfileDetailsForm from "./components/ProfileDetailsForm";
+import UserAvatar from "./components/UserAvatar";
+import StudentRoadmap from "./components/StudentRoadmap";
 import type { AuthMode } from "./auth/AuthScreen";
 import { useAuth } from "./auth/useAuth";
-import StudentRoadmap from "./components/StudentRoadmap";
 import ConnectPage from "./connect/ConnectPage";
 import NoticesPage from "./notices/NoticesPage";
 import CommunityPage from "./community/CommunityPage";
@@ -33,14 +30,13 @@ import LiveBackground from "./components/LiveBackground";
 import IntroAnimation from "./components/IntroAnimation";
 import LearnDiscovery from "./components/LearnDiscovery";
 import HomeExperience from "./components/HomeExperience";
-import ConnectProfileFields from "./connect/ConnectProfileFields";
 import { DEFAULT_COUNTRY } from "./connect/constants";
-import { ensureUserDocument, profileFromUser, saveConnectProfile } from "./connect/api";
+import { loadUser, profileFromUser, saveConnectProfile } from "./connect/api";
 import type { AppStudentProfile } from "./connect/types";
 import { auth } from "./firebase/config";
-import { useTheme, type ThemeMode } from "./theme";
+import { useTheme } from "./theme";
+import { BRAND_NAME, BRAND_NAME_UPPER } from "./config/brand";
 import { getSearchDestination } from "./search";
-import type { ConnectTab } from "./connect/types";
 import { CAREER_LABELS, SKILLS } from "./roadmap/catalog";
 import { CAREER_TOPIC_PATHS, LEARN_TRACKS, TOPIC_ROADMAPS } from "./roadmap/learnTopics";
 import { loadAccountProgress, loadIntake, loadProgress, setItemStatus } from "./roadmap/progress";
@@ -92,6 +88,9 @@ const initialProfile: AppStudentProfile = {
   bio: "",
   isSenior: false,
   helpAreas: [],
+  skillLevel: "beginner",
+  weeklyHours: "7",
+  timelineMonths: "6",
 };
 
 function isCompleteProfile(profile: Pick<AppStudentProfile, "name" | "college" | "state">): boolean {
@@ -100,64 +99,6 @@ function isCompleteProfile(profile: Pick<AppStudentProfile, "name" | "college" |
 
 
 
-
-const roadmapSteps = [
-  {
-    title: "Build Your Foundation",
-    time: "Month 1–2",
-    icon: <BookOpen size={24} />,
-    items: [
-      "Learn programming fundamentals",
-      "Understand Git and GitHub",
-      "Learn basic Linux",
-      "Improve problem-solving",
-    ],
-  },
-  {
-    title: "Choose Your Direction",
-    time: "Month 2–3",
-    icon: <Compass size={24} />,
-    items: [
-      "Explore different technology careers",
-      "Choose a primary skill",
-      "Understand required technologies",
-      "Create a personal learning plan",
-    ],
-  },
-  {
-    title: "Build Real Projects",
-    time: "Month 3–6",
-    icon: <Code2 size={24} />,
-    items: [
-      "Build beginner projects",
-      "Upload projects to GitHub",
-      "Create one strong portfolio project",
-      "Document what you build",
-    ],
-  },
-  {
-    title: "Gain Experience",
-    time: "Month 6–9",
-    icon: <Rocket size={24} />,
-    items: [
-      "Join hackathons",
-      "Apply for internships",
-      "Contribute to open source",
-      "Connect with other developers",
-    ],
-  },
-  {
-    title: "Prepare for Opportunities",
-    time: "Month 9+",
-    icon: <Target size={24} />,
-    items: [
-      "Build your resume",
-      "Improve LinkedIn profile",
-      "Practice coding problems",
-      "Prepare for interviews",
-    ],
-  },
-];
 
 const careers = [
   {
@@ -198,42 +139,33 @@ const careers = [
 ];
 
 function App() {
-  const { theme, setTheme, isDark, colors } = useTheme();
-  const { user, ready: authReady } = useAuth();
+  const { colors } = useTheme();
+  const { user, ready: authReady, logOut } = useAuth();
   const { scrollYProgress } = useScroll();
 
 
   const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname));
   const [selectedLearnTopic, setSelectedLearnTopic] = useState<string | null>(null);
   const [learnPathGoal, setLearnPathGoal] = useState<CareerGoal | null>(null);
-  const [roadmapGoal, setRoadmapGoal] = useState<CareerGoal | null>(null);
   const [learningProgress, setLearningProgress] = useState<ProgressMap>(() => loadProgress());
   const [heroQuery, setHeroQuery] = useState("");
   const [heroNotice, setHeroNotice] = useState("");
-  const [oppSearch, setOppSearch] = useState("");
-  const [connectTab, setConnectTab] = useState<ConnectTab>("discover");
-  const heroSearchPending = useRef(false);
-  const connectSearchPending = useRef(false);
-  const consumeHeroSearch = () => {
-    const pending = heroSearchPending.current;
-    heroSearchPending.current = false;
-    return pending;
-  };
-  const consumeConnectSearch = () => {
-    const pending = connectSearchPending.current;
-    connectSearchPending.current = false;
-    return pending;
-  };
 
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [themeMenu, setThemeMenu] = useState(false);
   const [hoveredMenu, setHoveredMenu] = useState<string | null>(null);
+  /** Where to return after login. Defaults to Profile. */
+  const [postLoginPage, setPostLoginPage] = useState<Page>("profile");
   const [profile, setProfile] = useState<AppStudentProfile>(initialProfile);
+  const [profilePhone, setProfilePhone] = useState("");
+  const [memberSince, setMemberSince] = useState<number | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [verifiedSenior, setVerifiedSenior] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [activeCareer, setActiveCareer] = useState<number | null>(null);
   /** True once the Firestore profile check has resolved for the current auth state. */
   const [profileReady, setProfileReady] = useState(false);
+  /** Bump to re-run the profile load without a full page refresh. */
+  const [profileReloadToken, setProfileReloadToken] = useState(0);
   /** True when users/{uid} exists with a saved name. */
   const [hasSavedProfile, setHasSavedProfile] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState("");
@@ -295,10 +227,6 @@ function App() {
       const nextPage = pageFromPath(window.location.pathname);
       setPage(nextPage);
       setMobileMenu(false);
-      setThemeMenu(false);
-      if (nextPage !== "roadmap") setRoadmapGoal(null);
-      if (nextPage === "opportunities") setOppSearch("");
-      if (nextPage === "connect") setConnectTab("discover");
     };
     window.addEventListener("popstate", syncPageFromUrl);
     return () => window.removeEventListener("popstate", syncPageFromUrl);
@@ -306,6 +234,7 @@ function App() {
 
   const openProfile = () => {
     if (authReady && !user) {
+      setPostLoginPage("profile");
       navigate("login");
       return;
     }
@@ -321,18 +250,19 @@ function App() {
     if (window.location.pathname !== nextPath) {
       window.history.pushState({ page: newPage }, "", nextPath);
     }
-    if (newPage !== "roadmap") setRoadmapGoal(null);
     setPage(newPage);
     setMobileMenu(false);
-    setThemeMenu(false);
-    if (newPage === "opportunities" && !consumeHeroSearch()) {
-      setOppSearch("");
-    }
-    if (newPage === "connect" && !consumeConnectSearch()) {
-      setConnectTab("discover");
-    }
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  useEffect(() => {
+    if (!authReady || user) return;
+    if (page === "profile") {
+      setPostLoginPage(page);
+      window.history.replaceState({ page: "login" }, "", pagePaths.login);
+      setPage("login");
+    }
+  }, [authReady, page, user]);
 
   const openLearnTopic = (topicId: string, goal?: CareerGoal) => {
     setSelectedLearnTopic(topicId);
@@ -340,18 +270,9 @@ function App() {
     navigate("learn");
   };
 
-  const openCareerRoadmap = (goal: CareerGoal) => {
-    setRoadmapGoal(goal);
+  const openCareerRoadmap = (_goal?: CareerGoal) => {
     navigate("roadmap");
   };
-
-  const themeOptions: { value: ThemeMode; label: string; icon: React.ReactNode }[] = [
-    { value: "light", label: "Light", icon: <Sun size={15} /> },
-    { value: "dark", label: "Dark", icon: <Moon size={15} /> },
-    { value: "system", label: "System", icon: <Monitor size={15} /> },
-  ];
-
-  const ThemeIcon = theme === "light" ? Sun : theme === "dark" ? Moon : Monitor;
 
   useEffect(() => {
     let active = true;
@@ -360,6 +281,8 @@ function App() {
     if (!authReady) return;
     if (!user) {
       setProfile(initialProfile);
+      setProfilePhone("");
+      setMemberSince(null);
       setVerifiedSenior(false);
       setHasSavedProfile(false);
       setProfileReady(true);
@@ -374,10 +297,31 @@ function App() {
     void (async () => {
       let remote = null;
       try {
-        remote = await ensureUserDocument(user);
+        remote = await loadUser(user.uid);
       } catch (err) {
-        console.error("Could not load profile:", err);
-        if (active) setProfileLoadError("Could not load your saved profile. Check your connection and refresh to try again.");
+        const code =
+          typeof (err as { code?: unknown })?.code === "string"
+            ? ((err as { code?: string }).code as string)
+            : "";
+        if (import.meta.env.DEV) {
+          console.error("[Profile] Load failed", { code: code || "unknown", error: err });
+        }
+        if (!active || auth.currentUser?.uid !== user.uid) return;
+        if (code === "permission-denied") {
+          setProfileLoadError(
+            "We couldn't access your profile. Please sign in again. If it keeps happening, the database rules need updating.",
+          );
+        } else if (code === "unavailable" || code === "auth/network-request-failed") {
+          setProfileLoadError("You appear to be offline. Check your connection and try again.");
+        } else if (code === "failed-precondition" || code === "not-found") {
+          setProfileLoadError("The database isn't set up yet. Please contact the site owner.");
+        } else if (code === "unauthenticated" || code === "auth/no-current-user") {
+          setProfileLoadError("Please sign in to view your profile.");
+        } else {
+          setProfileLoadError("Could not load your saved profile. Check your connection and try again.");
+        }
+        setProfileReady(true);
+        return;
       }
       if (!active || auth.currentUser?.uid !== user.uid) return;
       if (!remote) {
@@ -392,6 +336,8 @@ function App() {
       }
       setVerifiedSenior(remote.isVerifiedSenior);
       setHasSavedProfile(isCompleteProfile(remote));
+      setMemberSince(remote.createdAt ?? null);
+      setProfilePhone(remote.phone || user.phoneNumber || "");
       const next = profileFromUser(remote, "");
       setProfile({ ...next, name: next.name || user.displayName || "" });
       setProfileReady(true);
@@ -399,33 +345,20 @@ function App() {
     return () => {
       active = false;
     };
-  }, [authReady, user]);
+  }, [authReady, user, profileReloadToken]);
 
   const persistProfile = async (): Promise<void> => {
     const currentUser = auth.currentUser;
     if (!currentUser?.uid) {
       throw new Error("Please log in first (Google or phone), then save your profile.");
     }
-    try {
-      await saveConnectProfile(
-        currentUser.uid,
-        profile,
-        currentUser.photoURL || "",
-        currentUser.email || "",
-        currentUser.phoneNumber || "",
-      );
-    } catch (error) {
-      const firebaseError = error as { code?: unknown; message?: unknown };
-      console.error("[Profile] Save failed", {
-        operation: "save profile to Firestore",
-        code: typeof firebaseError?.code === "string" ? firebaseError.code : "unknown",
-        message: typeof firebaseError?.message === "string" ? firebaseError.message : String(error),
-        uid: currentUser.uid,
-        documentPath: `users/${currentUser.uid}`,
-        error,
-      });
-      throw error;
-    }
+    await saveConnectProfile(
+      currentUser.uid,
+      profile,
+      currentUser.photoURL || "",
+      currentUser.email || "",
+      profilePhone.trim() || currentUser.phoneNumber || "",
+    );
     setHasSavedProfile(isCompleteProfile(profile));
     try {
       await saveProfileNameToAccount();
@@ -440,7 +373,25 @@ function App() {
     if (!profile.name.trim()) return "Please enter your name.";
     if (!profile.college.trim()) return "Please enter your college to complete your profile.";
     if (!profile.state.trim()) return "Please select your state to complete your profile.";
+    if (profilePhone.trim() && !/^\+?[0-9\s-]{7,17}$/.test(profilePhone.trim())) {
+      return "Please enter a valid phone number, e.g. +91 98765 43210.";
+    }
+    const verifiedPhone = auth.currentUser?.phoneNumber || "";
+    if (profilePhone.trim() && profilePhone.trim() !== verifiedPhone) {
+      return "This phone number can't be saved because it isn't verified on your account. Leave the phone field blank, or sign in with that phone number first.";
+    }
     return "";
+  };
+
+  const handleLogout = async (): Promise<void> => {
+    setLoggingOut(true);
+    try {
+      await logOut();
+    } catch {
+      setSaveError("Could not sign out. Please try again.");
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   const handleSaveProfile = async (): Promise<boolean> => {
@@ -463,12 +414,34 @@ function App() {
       setSaveSuccess(true);
       return true;
     } catch (error) {
-      const firebaseError = error as { code?: unknown; message?: unknown };
-      const code = typeof firebaseError?.code === "string" ? ` (${firebaseError.code})` : "";
-      const message = typeof firebaseError?.message === "string"
-        ? firebaseError.message
-        : "An unexpected Firebase error occurred.";
-      setSaveError(`Could not save your profile${code}: ${message}`);
+      const code =
+        typeof (error as { code?: unknown })?.code === "string"
+          ? ((error as { code?: string }).code as string)
+          : "";
+      if (import.meta.env.DEV) {
+        console.error("[Profile] Save failed", {
+          code: code || "unknown",
+          message: error instanceof Error ? error.message : String(error),
+          error,
+        });
+      }
+      if (code === "permission-denied") {
+        setSaveError(
+          "Your account doesn't have permission to save this. Please sign in again; if it keeps happening, the database rules need updating.",
+        );
+      } else if (code === "unavailable") {
+        setSaveError("The database is temporarily unavailable. Check your connection and try again.");
+      } else if (code === "unauthenticated" || code === "auth/no-current-user") {
+        setSaveError("Please log in first (Google or phone), then save your profile.");
+      } else if (code === "not-found") {
+        setSaveError("Your profile document was not found. Please refresh and try again.");
+      } else {
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : "An unexpected Firebase error occurred.";
+        setSaveError(`Could not save your profile${code ? ` (${code})` : ""}: ${message}`);
+      }
       setSaveSuccess(false);
       return false;
     } finally {
@@ -487,25 +460,6 @@ function App() {
     if (currentUser && name) {
       await updateProfile(currentUser, { displayName: name });
     }
-  };
-
-  const fieldLabel: React.CSSProperties = {
-    display: "grid",
-    gap: 8,
-    color: colors.labelText,
-    fontSize: 13,
-    fontWeight: 650,
-  };
-
-  const inputStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "12px 13px",
-    borderRadius: 9,
-    border: `1px solid ${colors.inputBorder}`,
-    background: colors.inputBg,
-    color: colors.text,
-    outline: "none",
-    fontSize: 14,
   };
 
   const pageTitle = {
@@ -639,17 +593,24 @@ function App() {
   };
 
   const renderNavbar = () => (
-    <nav className="gradivo-nav" style={page === "home" ? { ...styles.nav, position: "absolute", top: 0, left: 0, width: "100%", boxSizing: "border-box" } : styles.nav}>
+    <nav
+      className="gradivo-nav"
+      style={{
+        ...styles.nav,
+        ...(page === "home" ? { position: "absolute", top: 0, left: 0, width: "100%", boxSizing: "border-box" } : {}),
+        ...(introVisible && authReady ? { zIndex: 2001, opacity: 1, pointerEvents: "auto", transform: "none" } : {}),
+      }}
+    >
       <div className="gradivo-nav-inner" style={styles.navInner}>
-        <div style={styles.logo} onClick={() => navigate("home")}>
+        <div className="gradivo-brand" style={styles.logo} onClick={() => navigate("home")}>
          <div style={styles.logoMark}>
   <img
     src="/gradivo-logo.png"
-    alt="Gradivo"
+    alt=""
     style={{ width: "100%", height: "100%", objectFit: "contain" }}
   />
 </div>
-          
+          <span className="gradivo-brand-name">Gradivo</span>
         </div>
 
         <div style={styles.navLinks}>
@@ -657,12 +618,11 @@ function App() {
             {(
               [
                 ["Home", "home"],
-                ["Roadmap", "roadmap"],
                 ["Learn", "learn"],
-                ["Careers", "careers"],
+                ["Roadmaps", "roadmap"],
                 ["Opportunities", "opportunities"],
+                ["Projects", "community"],
                 ["Connect", "connect"],
-                ["Community", "community"],
               ] as const
             ).map(([label, value]) => (
               <button
@@ -672,7 +632,7 @@ function App() {
                 onClick={() => navigate(value)}
                 style={{
                   ...styles.navButton,
-                color: page === value ? (isDark ? "white" : colors.purple2) : colors.muted,
+                  color: page === value ? "white" : colors.muted,
                   background: page === value ? "rgba(59,130,246,.18)" : "transparent",
                 }}
               >
@@ -688,90 +648,13 @@ function App() {
             }}
             onClick={openProfile}
           >
-            <User size={17} />
-            Profile
-          </button>
-
-          <div style={{ position: "relative" }}>
-            <button
-              aria-label="Change theme"
-              title={`Theme: ${theme}`}
-              onClick={() => setThemeMenu(!themeMenu)}
-              style={{
-                border: `1px solid ${colors.border}`,
-                background: colors.card,
-                color: colors.text,
-                padding: 10,
-                borderRadius: 9,
-                cursor: "pointer",
-                display: "grid",
-                placeItems: "center",
-              }}
-            >
-              <ThemeIcon size={19} />
-            </button>
-
-            {themeMenu && (
-              <div
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  top: 48,
-                  width: 190,
-                  background: colors.card,
-                  border: `1px solid ${colors.border}`,
-                  borderRadius: 14,
-                  padding: 6,
-                  zIndex: 60,
-                  boxShadow: "0 12px 40px rgba(0,0,0,.35)",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: colors.muted,
-                    padding: "8px 10px 4px",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  THEME
-                </div>
-                {themeOptions.map((option) => {
-                  const selected = theme === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      onClick={() => {
-                        setTheme(option.value);
-                        setThemeMenu(false);
-                      }}
-                      style={{
-                        border: "none",
-                        width: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        background: selected ? "rgba(59,130,246,.15)" : "transparent",
-                        color: selected ? colors.purple2 : colors.muted,
-                        padding: "10px",
-                        borderRadius: 9,
-                        cursor: "pointer",
-                        fontSize: 14,
-                        fontWeight: selected ? 700 : 500,
-                      }}
-                    >
-                      {option.icon}
-                      {option.label}
-                      <span style={{ marginLeft: "auto", fontSize: 13 }}>
-                        {selected ? "●" : "○"}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+            {authReady && user ? (
+              <UserAvatar photoURL={user.photoURL} name={user.displayName || user.email} size={26} />
+            ) : (
+              <User size={17} />
             )}
-          </div>
+            {authReady && user ? "Profile" : "Log in"}
+          </button>
 
           <button
             className="mobile-menu-button"
@@ -801,12 +684,11 @@ function App() {
         >
           {[
             ["Home", "home"],
-            ["Roadmap", "roadmap"],
             ["Learn", "learn"],
-            ["Careers", "careers"],
+            ["Roadmaps", "roadmap"],
             ["Opportunities", "opportunities"],
+            ["Projects", "community"],
             ["Connect", "connect"],
-            ["Community", "community"],
           ].map(([label, value]) => (
             <button
   className={`menu-item${page === value ? " is-active" : ""}`}
@@ -835,52 +717,6 @@ function App() {
 </button>
           ))}
 
-          <div
-            style={{
-              borderTop: `1px solid ${colors.border}`,
-              marginTop: 6,
-              paddingTop: 12,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: colors.muted,
-                padding: "0 13px 6px",
-                letterSpacing: "0.5px",
-              }}
-            >
-              THEME
-            </div>
-            {themeOptions.map((option) => {
-              const selected = theme === option.value;
-              return (
-                <button
-                  className="menu-item"
-                  key={option.value}
-                  onClick={() => setTheme(option.value)}
-                  style={{
-                    ...styles.navButton,
-                    width: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    textAlign: "left",
-                    background: selected ? "rgba(59,130,246,.15)" : "transparent",
-                    color: selected ? colors.purple2 : colors.muted,
-                    transition: "all 0.2s ease",
-                  }}
-                >
-                  {option.icon}
-                  {option.label}
-                  <span style={{ marginLeft: "auto", fontSize: 13 }}>
-                    {selected ? "●" : "○"}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
         </div>
       )}
     </nav>
@@ -905,39 +741,22 @@ function App() {
           return;
         }
         setHeroNotice("");
-        if (dest.page === "opportunities") {
-          heroSearchPending.current = true;
-          setOppSearch(heroQuery.trim());
-        } else if (dest.page === "connect") {
-          connectSearchPending.current = true;
-          setConnectTab(dest.tab ?? "discover");
-        }
         navigate(dest.page);
       }}
     />
   );
 
-  const renderRoadmap = () => (
-    <StudentRoadmap
-      profile={profile}
-      colors={colors}
-      onBack={() => navigate("home")}
-      onOpenProfile={openProfile}
-      initialCareerGoal={roadmapGoal}
-      progress={learningProgress}
-      onProgressChange={setLearningProgress}
-      onLearnTopic={(topicId, goal) => {
-        const next = setItemStatus(learningProgress, topicId, "learning");
-        setLearningProgress(next);
-        openLearnTopic(topicId, goal);
-      }}
-      classicSteps={roadmapSteps}
-    />
-  );
-
   const renderLearn = () => {
     if (!selectedLearnTopic || !SKILLS[selectedLearnTopic]) {
-      return <LearnDiscovery onOpenTopic={(id) => openLearnTopic(id)} onOpenRoadmap={openCareerRoadmap} />;
+      return (
+        <LearnDiscovery
+          onOpenTopic={(id) => openLearnTopic(id)}
+          onOpenRoadmap={openCareerRoadmap}
+          profileGoal={profile.goal}
+          uid={user?.uid ?? null}
+          onNavigate={(dest) => navigate(dest)}
+        />
+      );
     }
     return (
     <section style={styles.section}>
@@ -1134,14 +953,7 @@ function App() {
     </section>
   );
 
-  const renderOpportunities = () => (
-    <NoticesPage
-      colors={colors}
-      profileCity={profile.city}
-      profileState={profile.state}
-      initialSearch={oppSearch}
-    />
-  );
+  const renderOpportunities = () => <NoticesPage />;
 
   const renderProfile = () => (
     <section style={styles.section}>
@@ -1160,153 +972,76 @@ function App() {
           context.
         </p>
 
-        <div style={{ ...styles.card, maxWidth: 760, marginTop: 45 }}>
-          <ProfileAuth
-            colors={colors}
-            studentName={profile.name}
-            onAuthName={(name) =>
-              setProfile((current) =>
-                current.name ? current : { ...current, name },
-              )
-            }
-          >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))",
-              gap: 18,
-            }}
-          >
-            <label style={fieldLabel}>
-              Name
-              <input
-                value={profile.name}
-                onChange={(e) =>
-                  setProfile({ ...profile, name: e.target.value })
-                }
-                placeholder="Your name"
-                style={inputStyle}
-              />
-            </label>
-
-            <label style={fieldLabel}>
-              Branch / Course
-              <input
-                value={profile.branch}
-                onChange={(e) =>
-                  setProfile({ ...profile, branch: e.target.value })
-                }
-                placeholder="Example: ISE"
-                style={inputStyle}
-              />
-            </label>
-
-            <label style={fieldLabel}>
-              Year
-              <select
-                value={profile.year}
-                onChange={(e) =>
-                  setProfile({ ...profile, year: e.target.value })
-                }
-                style={inputStyle}
-              >
-                <option value="">Select year</option>
-                <option value="1st Year">1st Year</option>
-                <option value="2nd Year">2nd Year</option>
-                <option value="3rd Year">3rd Year</option>
-                <option value="4th Year">4th Year</option>
-              </select>
-            </label>
-
-            <label style={fieldLabel}>
-              Career Goal
-              <input
-                value={profile.goal}
-                onChange={(e) =>
-                  setProfile({ ...profile, goal: e.target.value })
-                }
-                placeholder="Example: Cybersecurity"
-                style={inputStyle}
-              />
-            </label>
+        {!authReady || !profileReady ? (
+          <div style={{ ...styles.card, maxWidth: 760, marginTop: 32 }} role="status">
+            <div style={{ color: colors.muted, fontSize: 14 }}>Loading your profile…</div>
           </div>
-
-          <div style={{ marginTop: 25 }}>
-            <div style={fieldLabel}>Interests</div>
-
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 9,
-                marginTop: 10,
+        ) : !user ? (
+          <div style={{ ...styles.card, maxWidth: 760, marginTop: 32 }}>
+            <div style={{ fontWeight: 750, fontSize: 18, marginBottom: 8 }}>Profile</div>
+            <p style={{ color: colors.muted, fontSize: 14, margin: "0 0 14px" }}>
+              Log in to view and edit your Gradivo profile.
+            </p>
+            <button type="button" style={styles.primary} onClick={() => navigate("login")}>
+              Go to login
+            </button>
+          </div>
+        ) : (
+          <div style={{ ...styles.card, maxWidth: 760, marginTop: 32 }}>
+            <ProfileDetailsForm
+              colors={colors}
+              profile={profile}
+              setProfile={setProfile}
+              phone={profilePhone}
+              onPhoneChange={setProfilePhone}
+              email={user.email || ""}
+              verifiedSenior={verifiedSenior}
+              account={{
+                photoURL: user.photoURL || "",
+                email: user.email || "",
+                providers: user.providerData.map((info) => info.providerId).filter(Boolean),
+                memberSince,
+                onLogout: handleLogout,
+                loggingOut,
               }}
+            />
+            {profileLoadError ? (
+              <div role="alert" style={{ color: "#fca5a5", marginTop: 14, fontSize: 13 }}>
+                <div>{profileLoadError}</div>
+                <button
+                  type="button"
+                  onClick={() => setProfileReloadToken((token) => token + 1)}
+                  style={{
+                    ...styles.primary,
+                    marginTop: 10,
+                    padding: "9px 14px",
+                    fontSize: 13,
+                  }}
+                >
+                  Try again
+                </button>
+              </div>
+            ) : null}
+            {saveError ? (
+              <div role="alert" style={{ color: "#fca5a5", marginTop: 14, fontSize: 13 }}>
+                {saveError}
+              </div>
+            ) : null}
+            {saveSuccess ? (
+              <div role="status" style={{ color: "#6ee7b7", marginTop: 14, fontSize: 13 }}>
+                Profile saved successfully!
+              </div>
+            ) : null}
+            <button
+              type="button"
+              style={{ ...styles.primary, marginTop: 22, opacity: saving ? 0.7 : 1 }}
+              onClick={handleSaveProfile}
+              disabled={saving}
             >
-              {[
-                "Coding",
-                "Cybersecurity",
-                "AI",
-                "Cloud",
-                "Web Development",
-                "Design",
-                "Data",
-              ].map((interest) => {
-                const active = profile.interests.includes(interest);
-
-                return (
-                  <button
-                    key={interest}
-                    onClick={() =>
-                      setProfile({
-                        ...profile,
-                        interests: active
-                          ? profile.interests.filter((x) => x !== interest)
-                          : [...profile.interests, interest],
-                      })
-                    }
-                    style={{
-                      border: `1px solid ${
-                        active ? colors.purple : colors.border
-                      }`,
-                      background: active
-                        ? "rgba(59,130,246,.15)"
-                        : colors.card2,
-                      color: active ? colors.purple2 : colors.muted,
-                      padding: "9px 12px",
-                      borderRadius: 9,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {interest}
-                  </button>
-                );
-              })}
-            </div>
+              {saving ? "Saving..." : "Save changes"}
+            </button>
           </div>
-
-          <ConnectProfileFields
-            profile={profile}
-            setProfile={setProfile}
-            colors={colors}
-            verifiedSenior={verifiedSenior}
-          />
-
-          <button
-            type="button"
-            style={{ ...styles.primary, marginTop: 30 }}
-            onClick={async () => {
-              const ok = await handleSaveProfile();
-              if (ok) {
-                setShowProfile(false);
-                navigate("roadmap");
-              }
-            }}
-          >
-            Save & Start Roadmap
-            <ArrowRight size={17} />
-          </button>
-          </ProfileAuth>
-        </div>
+        )}
       </div>
     </section>
   );
@@ -1321,11 +1056,11 @@ function App() {
       case "signup": {
         const mode: AuthMode = page;
         const openAuthMode = (nextMode: AuthMode) => navigate(nextMode);
-        const continueToProfile = () => navigate("profile");
-        return <AuthPage mode={mode} colors={colors} onModeChange={openAuthMode} onSuccess={continueToProfile} onAuthenticated={continueToProfile} />;
+        const continueAfterAuth = () => navigate(postLoginPage);
+        return <AuthPage mode={mode} colors={colors} onModeChange={openAuthMode} onSuccess={continueAfterAuth} onAuthenticated={continueAfterAuth} />;
       }
       case "roadmap":
-        return renderRoadmap();
+        return <StudentRoadmap />;
       case "learn":
         return renderLearn();
       case "careers":
@@ -1333,19 +1068,9 @@ function App() {
       case "opportunities":
         return renderOpportunities();
       case "community":
-        return <CommunityPage colors={colors} onOpenProfile={openProfile} />;
+        return <CommunityPage />;
       case "connect":
-        return (
-          <ConnectPage
-            colors={colors}
-            profile={profile}
-            setProfile={setProfile}
-            onOpenProfile={openProfile}
-            profileReady={profileReady}
-            profileLoadError={profileLoadError}
-            initialTab={connectTab}
-          />
-        );
+        return <ConnectPage />;
       default:
         return renderHome();
     }
@@ -1433,7 +1158,7 @@ function App() {
   >
     <div>
       <div style={{ fontWeight: 800, fontSize: 19 }}>
-        Gradivo
+        {BRAND_NAME}
       </div>
 
       <div
@@ -1453,11 +1178,11 @@ function App() {
         fontSize: 12,
       }}
     >
-      © 2026 Gradivo. All rights reserved.
+      © 2026 {BRAND_NAME}. All rights reserved.
     </div>
   </div>
   <div className="footer-giant" aria-hidden="true">
-    GRADIVO
+    {BRAND_NAME_UPPER}
   </div>
 </footer>
 
@@ -1600,127 +1325,28 @@ function App() {
             </h2>
             {profileLoadError ? (
               <div role="alert" style={{ color: "#fca5a5", marginBottom: 14 }}>
-                {profileLoadError}
+                <div>{profileLoadError}</div>
+                <button
+                  type="button"
+                  onClick={() => setProfileReloadToken((token) => token + 1)}
+                  style={{
+                    ...styles.primary,
+                    marginTop: 10,
+                    padding: "9px 14px",
+                    fontSize: 13,
+                  }}
+                >
+                  Try again
+                </button>
               </div>
             ) : null}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))",
-                gap: 17,
-                marginTop: 8,
-              }}
-            >
-              <label style={fieldLabel}>
-                Name
-                <input
-                  value={profile.name}
-                  onChange={(e) =>
-                    setProfile({ ...profile, name: e.target.value })
-                  }
-                  placeholder="Your name"
-                  style={inputStyle}
-                />
-              </label>
-
-              <label style={fieldLabel}>
-                Branch
-                <input
-                  value={profile.branch}
-                  onChange={(e) =>
-                    setProfile({ ...profile, branch: e.target.value })
-                  }
-                  placeholder="Example: ISE"
-                  style={inputStyle}
-                />
-              </label>
-
-              <label style={fieldLabel}>
-                Year
-                <select
-                  value={profile.year}
-                  onChange={(e) =>
-                    setProfile({ ...profile, year: e.target.value })
-                  }
-                  style={inputStyle}
-                >
-                  <option value="">Select year</option>
-                  <option value="1st Year">1st Year</option>
-                  <option value="2nd Year">2nd Year</option>
-                  <option value="3rd Year">3rd Year</option>
-                  <option value="4th Year">4th Year</option>
-                </select>
-              </label>
-
-              <label style={fieldLabel}>
-                Goal
-                <input
-                  value={profile.goal}
-                  onChange={(e) =>
-                    setProfile({ ...profile, goal: e.target.value })
-                  }
-                  placeholder="Your career goal"
-                  style={inputStyle}
-                />
-              </label>
-            </div>
-
-            <div style={{ marginTop: 22 }}>
-              <div style={fieldLabel}>Interests</div>
-
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 8,
-                  marginTop: 10,
-                }}
-              >
-                {[
-                  "Coding",
-                  "Cybersecurity",
-                  "AI",
-                  "Cloud",
-                  "Web Development",
-                  "Data",
-                ].map((interest) => {
-                  const active = profile.interests.includes(interest);
-
-                  return (
-                    <button
-                      key={interest}
-                      onClick={() =>
-                        setProfile({
-                          ...profile,
-                          interests: active
-                            ? profile.interests.filter((x) => x !== interest)
-                            : [...profile.interests, interest],
-                        })
-                      }
-                      style={{
-                        border: `1px solid ${
-                          active ? colors.purple : colors.border
-                        }`,
-                        background: active
-                          ? "rgba(59,130,246,.15)"
-                          : colors.card2,
-                        color: active ? colors.purple2 : colors.muted,
-                        padding: "8px 11px",
-                        borderRadius: 8,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {interest}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <ConnectProfileFields
+            <ProfileDetailsForm
+              colors={colors}
               profile={profile}
               setProfile={setProfile}
-              colors={colors}
+              phone={profilePhone}
+              onPhoneChange={setProfilePhone}
+              email={user?.email || ""}
               verifiedSenior={verifiedSenior}
             />
 

@@ -1,0 +1,39 @@
+.learn-playlist-title-row { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.learn-playlist-title-row h3 { min-width: 0; flex: 1; }
+.learn-video-progress { min-height: 22px; display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; margin-top: 1px; padding: 3px 7px; border: 1px solid rgba(112, 154, 255, .3); border-radius: 99px; color: #a9c0ff; background: rgba(59, 96, 190, .13); font-size: 10px; font-weight: 750; white-space: nowrap; }
+.learn-video-progress.is-complete { color: #dce7ff; border-color: rgba(139, 174, 255, .55); background: rgba(59, 96, 190, .24); }
+.learn-video-progress > span { font-size: 9px; }
+.learn-progress-error { margin: 0 0 12px; color: #a9c0ff; font-size: 12px; }
+
+.learn-player-backdrop { position: fixed; z-index: 2500; inset: 0; display: grid; place-items: center; padding: clamp(12px, 4vw, 36px); padding-top: max(clamp(12px, 4vw, 36px), env(safe-area-inset-top, 0px)); padding-bottom: max(clamp(12px, 4vw, 36px), env(safe-area-inset-bottom, 0px)); background: rgba(2, 4, 12, .82); backdrop-filter: blur(9px); animation: learn-player-fade .16s ease both; }
+.learn-player-modal { width: min(900px, 100%); overflow: hidden; border: 1px solid rgba(125, 140, 192, .38); border-radius: 18px; color: #e4e9ff; background: linear-gradient(145deg, rgba(18, 23, 41, .99), rgba(7, 10, 20, .99)); box-shadow: 0 24px 90px rgba(0, 0, 0, .55), 0 0 35px rgba(59, 96, 190, .17); }
+.learn-player-header { min-height: 69px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 17px; border-bottom: 1px solid rgba(125, 140, 192, .2); }
+.learn-player-header > div { min-width: 0; }
+.learn-player-header h2 { margin: 0; overflow: hidden; color: #e4e9ff; font-size: 15px; line-height: 1.45; text-overflow: ellipsis; }
+.learn-player-header p { margin: 4px 0 0; color: #9fa5bb; font-size: 11px; }
+.learn-player-close { width: 44px; height: 44px; display: grid; flex: 0 0 auto; place-items: center; border: 1px solid rgba(125, 140, 192, .24); border-radius: 11px; color: #fff; background: rgba(30, 38, 68, .92); cursor: pointer; position: relative; z-index: 5; margin-top: env(safe-area-inset-top, 0px); }
+.learn-player-close:hover { border-color: rgba(139, 174, 255, .6); color: white; background: rgba(59, 96, 190, .35); }
+.learn-player-close:focus-visible { outline: 2px solid #93C5FD; outline-offset: 2px; }
+.learn-player-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: #050812; }
+.learn-player-iframe { position: absolute; inset: 0; width: 100%; height: 100%; }
+.learn-player-iframe iframe { width: 100%; height: 100%; border: 0; }
+.learn-player-loading, .learn-player-fallback { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 13px; padding: 22px; color: #cbd6fb; background: rgba(5, 8, 18, .94); text-align: center; }
+.learn-player-loading { color: #9fa5bb; font-size: 13px; }
+.learn-player-fallback p { max-width: 400px; margin: 0; color: #cbd6fb; font-size: 13px; line-height: 1.6; }
+.learn-player-fallback a { display: inline-flex; align-items: center; gap: 7px; padding: 10px 14px; border: 1px solid rgba(112, 154, 255, .48); border-radius: 9px; color: #e4e9ff; background: rgba(59, 96, 190, .24); font-size: 12px; font-weight: 700; text-decoration: none; }
+.learn-player-fallback a:hover { background: rgba(59, 96, 190, .38); }
+.learn-player-footer { min-height: 41px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 16px; border-top: 1px solid rgba(125, 140, 192, .2); color: #9fa5bb; font-size: 10px; }
+.learn-player-footer > span:first-child:not(:last-child) { color: #a9c0ff; font-weight: 700; }
+
+@keyframes learn-player-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 600px) {
+  .learn-player-backdrop { padding: 12px; }
+  .learn-player-modal { border-radius: 13px; }
+  .learn-player-header { min-height: 60px; padding: 11px; }
+  .learn-player-header h2 { font-size: 12px; }
+  .learn-player-close { width: 32px; height: 32px; }
+  .learn-player-footer { align-items: flex-start; flex-direction: column; gap: 4px; padding: 9px 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .learn-player-backdrop { animation: none; }
+}

@@ -4,6 +4,7 @@ import type { ThemeColors } from "../connect/types";
 import { useAuth } from "../auth/useAuth";
 import { getAuthErrorMessage, logAuthError } from "../auth/authError";
 import AuthScreen from "../auth/AuthScreen";
+import UserAvatar from "./UserAvatar";
 
 type Props = {
   children?: ReactNode;
@@ -43,7 +44,7 @@ export default function ProfileAuth({ children, studentName, onAuthName, onSignu
   return (
     <div style={{ textAlign: "left" }}>
       <div style={{ display: "flex", gap: 14, alignItems: "center", padding: 16, marginBottom: 22, border: `1px solid ${colors.border}`, borderRadius: 14, background: colors.card2, flexWrap: "wrap" }}>
-        {user.photoURL ? <img src={user.photoURL} alt="" style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "cover" }} /> : <div aria-hidden="true" style={{ width: 48, height: 48, display: "grid", placeItems: "center", borderRadius: "50%", color: colors.purple2, background: "rgba(59,130,246,.18)", fontWeight: 800 }}>{name.slice(0, 1).toUpperCase()}</div>}
+        <UserAvatar photoURL={user.photoURL} name={name} size={48} style={{ color: colors.purple2 }} />
         <div style={{ flex: 1, minWidth: 150 }}>
           <div style={{ color: colors.text, fontWeight: 750 }}>{name}</div>
           {user.email && <div style={{ marginTop: 3, color: colors.muted, fontSize: 13 }}>{user.email}</div>}

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, UserRound } from "lucide-react";
 import { useAuth } from "./useAuth";
 import { getAuthErrorMessage } from "./authError";
+import SocialButtons from "./SocialButtons";
 import "./auth.css";
 
 type SignUpProps = {
@@ -194,6 +195,11 @@ export default function SignUpPage({ onNavigateLogin, onSuccess }: SignUpProps) 
             {!busy && <ArrowRight size={17} />}
           </button>
         </form>
+
+        <div className="gradivo-auth-divider" aria-hidden="true">
+          or continue with
+        </div>
+        <SocialButtons onSuccess={onSuccess} />
 
         <div className="gradivo-auth-footer">
           <span>Already have an account?</span>

@@ -3,7 +3,7 @@ import type { CareerGoal, CareerPlan, SkillDef } from "./types";
 export const KNOWLEDGE_VERSION = "2026-09-gradivo-catalog";
 
 export const KNOWLEDGE_LABEL =
-  "This roadmap is based on Gradivo’s current guidance catalog (September 2026). It is not live job-market data.";
+  "This roadmap is based on Gradivo's current guidance catalog (September 2026). It is not live job-market data.";
 
 const r = (title: string, note: string) => ({ title, note });
 

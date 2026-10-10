@@ -26,6 +26,8 @@ export type StudentIntake = {
   interests: string[];
   weeklyHours: string;
   targetRole: string;
+  /** User-declared target timeline in months ("3" | "6" | "12"). Defaults to "6". */
+  timelineMonths: string;
 };
 
 export type Resource = {

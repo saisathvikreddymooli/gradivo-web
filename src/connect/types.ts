@@ -17,6 +17,10 @@ export type ConnectUser = {
   helpAreas: string[];
   isSenior: boolean;
   isVerifiedSenior: boolean;
+  /** Roadmap inputs mirrored from the profile form (same users/{uid} document). */
+  skillLevel: "beginner" | "intermediate" | "advanced";
+  weeklyHours: string;
+  timelineMonths: string;
   /** Account role. Seniors may have role == "senior". Defaults to "student". */
   role: string;
   online: boolean;
@@ -81,7 +85,16 @@ export type ProjectRequest = {
   createdAt: number | null;
 };
 
-export type ConnectTab = "discover" | "seniors" | "groups" | "messages" | "projects";
+export type ConnectionRequest = {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  status: "pending" | "accepted" | "declined";
+  createdAt: number | null;
+  updatedAt: number | null;
+};
+
+export type ConnectTab = "discover" | "seniors" | "requests" | "groups" | "messages" | "projects";
 
 export type ThemeColors = {
   bg: string;
@@ -120,4 +133,9 @@ export type AppStudentProfile = {
   bio: string;
   isSenior: boolean;
   helpAreas: string[];
+  /** Roadmap inputs (saved in the same users/{uid} document, never renamed). */
+  skillLevel: "beginner" | "intermediate" | "advanced";
+  weeklyHours: string;
+  /** Target timeline in months ("3" | "6" | "12"). */
+  timelineMonths: string;
 };
