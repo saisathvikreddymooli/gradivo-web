@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-30T03:31:07.043Z",
+  "updatedAt": "2026-10-31T03:30:02.693Z",
   "source": "Gradivo Opportunity Sync",
   "opportunities": [
     {
@@ -19,7 +19,7 @@
       "duration": "",
       "startDate": "",
       "registrationUrl": "",
-      "verifiedAt": "2026-10-30",
+      "verifiedAt": "2026-10-31",
       "latitude": null,
       "longitude": null,
       "deadline": "",
@@ -47,7 +47,7 @@
       "duration": "",
       "startDate": "",
       "registrationUrl": "",
-      "verifiedAt": "2026-10-30",
+      "verifiedAt": "2026-10-31",
       "latitude": null,
       "longitude": null,
       "deadline": "",
@@ -56,34 +56,6 @@
       "sourceName": "Stripe Careers (Greenhouse)",
       "sourceUrl": "https://stripe.com/jobs/search?gh_jid=8031833",
       "applicationUrl": "https://stripe.com/jobs/search?gh_jid=8031833",
-      "isActive": true
-    },
-    {
-      "id": "greenhouse:groww:4956817101",
-      "type": "internship",
-      "title": "Video Editor Intern",
-      "organization": "Groww",
-      "description": "<div><strong>About Groww:</strong></div> <div>We are a passionate group of people focused on making financial services accessible to every Indian through a multi-product platform. Each day, we help millions of customers take charge of their financial journey. Customer obsession is in our DNA. Every product, every design, every algorithm down to the tiniest detail is executed keeping the customers’ needs and convenience in mind. Our people are our greatest strength. Everyone at Groww is driven by ownership, customer-centricity, integrity and the passion to constantly challenge the status quo.</div> <div>&nbsp;</div> <div>Are you as passionate about defying conventions and creating something extraordinary as we are? Let’s chat.</div> <div>&nbsp;</div> <div><strong>Our Vision</strong></div> <div>Every individual deserves the knowledge, tools, and confidence to make informed financial decisions. At Groww, we are making sure every Indian feels empowered to do so through a cutting-edge multi-product platform offering a variety of financial services. Our long-term vision is to become the trusted financial partner for millions of Indians.</div> <div>&nbsp;</div> <div><strong>Our Values</strong></div> <div>Our culture enables us to be what we are — India’s fastest-growing financial services company. It fosters an environment where collaboration, transparency, and open communication take center-stage and hierarchies fade away. There is space for every individual to be themselves and fe",
-      "location": "Bengaluru-VTP, India",
-      "city": "Bengaluru-VTP",
-      "state": "",
-      "country": "India",
-      "mode": "On-site",
-      "skills": [],
-      "eligibility": "",
-      "stipend": "",
-      "duration": "",
-      "startDate": "",
-      "registrationUrl": "",
-      "verifiedAt": "2026-10-30",
-      "latitude": null,
-      "longitude": null,
-      "deadline": "",
-      "eventDate": "",
-      "postedAt": "2026-09-04",
-      "sourceName": "Groww Careers (Greenhouse)",
-      "sourceUrl": "https://job-boards.eu.greenhouse.io/groww/jobs/4956817101",
-      "applicationUrl": "https://job-boards.eu.greenhouse.io/groww/jobs/4956817101",
       "isActive": true
     }
   ]
