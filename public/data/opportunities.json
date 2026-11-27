@@ -1,14 +1,14 @@
 {
-  "updatedAt": "2026-11-25T11:53:18.804Z",
+  "updatedAt": "2026-11-27T11:35:13.755Z",
   "source": "Gradivo Opportunity Sync",
   "opportunities": [
     {
-      "id": "greenhouse:stripe:8031833",
+      "id": "greenhouse:groww:5049076101",
       "type": "internship",
-      "title": "Software Engineer, Intern",
-      "organization": "Stripe",
-      "description": "<h2><strong>Who we are</strong></h2> <h3><strong>About Stripe</strong></h3> <p>Stripe is a technology company focused on improving the conditions for economic growth and prosperity. We build programmable financial infrastructure, rethinking from first principles how financial services should work, to make it easier and cheaper for any business to start and scale. More than 10 million <a href=\"https://stripe.com/customers\">businesses</a> build on Stripe, spanning the economic frontier—from solo founders to established enterprises—united by a practical focus on growth. The most ambitious companies in the world use Stripe as core infrastructure to grow faster. They process trillions of dollars a year on Stripe, equivalent to around 1.6% of global GDP. While economic growth makes everyone better off, open markets also enable greater variety. When any business can easily serve a global customer base, the quality and diversity of products in the world increase, and craft and creativity are unleashed into the smallest niches. Our own growth is wholly contingent on the success of the businesses building on Stripe. We therefore invest back into our technology at an unusual rate. We make <a href=\"https://stripe.com/roadmap\">upgrades to our products</a> every single day to deliver compounding gains to our customers. We maintain some of the most <a href=\"https://status.stripe.com/\">reliable APIs</a> on the internet. We build entirely new <a href=\"https://tempo.xyz/\">pieces</a> of <a href",
-      "location": "Bengaluru",
+      "title": "Content - Intern",
+      "organization": "Groww",
+      "description": "<div><strong>About Groww:</strong></div> <div>We are a passionate group of people focused on making financial services accessible to every Indian through a multi-product platform. Each day, we help millions of customers take charge of their financial journey. Customer obsession is in our DNA. Every product, every design, every algorithm down to the tiniest detail is executed keeping the customers’ needs and convenience in mind. Our people are our greatest strength. Everyone at Groww is driven by ownership, customer-centricity, integrity and the passion to constantly challenge the status quo.</div> <div>&nbsp;</div> <div>Are you as passionate about defying conventions and creating something extraordinary as we are? Let’s chat.</div> <div>&nbsp;</div> <div><strong>Our Vision</strong></div> <div>Every individual deserves the knowledge, tools, and confidence to make informed financial decisions. At Groww, we are making sure every Indian feels empowered to do so through a cutting-edge multi-product platform offering a variety of financial services. Our long-term vision is to become the trusted financial partner for millions of Indians.</div> <div>&nbsp;</div> <div><strong>Our Values</strong></div> <div>Our culture enables us to be what we are — India’s fastest-growing financial services company. It fosters an environment where collaboration, transparency, and open communication take center-stage and hierarchies fade away. There is space for every individual to be themselves and fe",
+      "location": "Bengaluru, India",
       "city": "Bengaluru",
       "state": "",
       "country": "India",
@@ -19,15 +19,15 @@
       "duration": "",
       "startDate": "",
       "registrationUrl": "",
-      "verifiedAt": "2026-11-25",
+      "verifiedAt": "2026-11-27",
       "latitude": null,
       "longitude": null,
       "deadline": "",
       "eventDate": "",
-      "postedAt": "2026-07-10",
-      "sourceName": "Stripe Careers (Greenhouse)",
-      "sourceUrl": "https://stripe.com/jobs/search?gh_jid=8031833",
-      "applicationUrl": "https://stripe.com/jobs/search?gh_jid=8031833",
+      "postedAt": "2026-11-26",
+      "sourceName": "Groww Careers (Greenhouse)",
+      "sourceUrl": "https://job-boards.eu.greenhouse.io/groww/jobs/5049076101",
+      "applicationUrl": "https://job-boards.eu.greenhouse.io/groww/jobs/5049076101",
       "isActive": true
     }
   ]
